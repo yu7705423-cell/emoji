@@ -107,6 +107,8 @@
   .row-main input{width:100%; border:none; background:transparent; outline:none; font-size:13px; padding:2px 0;}
   .row-main input.desc{font-weight:500;}
   .row-main input.url{font-size:11px; color:var(--text-dim);}
+  .row-main .source-input{font-size:11px; color:var(--text-dim); margin-top:1px;}
+  .row-source-toggle{background:none; border:none; padding:2px 0 0; font-size:10.5px; color:var(--text-faint); cursor:pointer; text-align:left;}
   .row-status{flex-shrink:0; width:14px; display:flex; align-items:center; justify-content:center; padding-top:12px;}
   .dot{width:6px; height:6px; border-radius:50%; background:var(--ink);}
   .dot.outline{background:transparent; border:1.3px solid var(--text-faint);}
@@ -195,8 +197,8 @@
   .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
 
   .tabbar{position:fixed; left:0; right:0; bottom:0; max-width:480px; margin:0 auto; z-index:30; flex-shrink:0; border-top:1px solid var(--border); background:var(--bg); display:flex; padding-bottom:env(safe-area-inset-bottom);}
-  .tab-btn{flex:1; background:none; border:none; padding:9px 4px 10px; display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; color:var(--text-faint);}
-  .tab-btn svg{width:20px; height:20px; transform:translateY(20px);}
+  .tab-btn{flex:1; background:none; border:none; padding:12px 4px 7px; display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; color:var(--text-faint);}
+  .tab-btn svg{width:20px; height:20px;}
   .tab-btn span{font-size:10px; font-weight:600;}
   .tab-btn.active{color:var(--ink);}
 
@@ -469,7 +471,6 @@
       <div class="ig-name" id="myProfileName"></div>
       <div class="ig-status" id="myProfileStatus"></div>
       <div class="btn-row"><button class="btn-outline" id="editProfileBtn">编辑资料</button></div>
-      <div class="btn-row" id="adminEntryRow" style="display:none;"><button class="btn-outline" id="openAdminBtn">管理员后台</button></div>
       <div class="ig-tabbar">
         <button class="ig-tab active" data-tab="works" aria-label="作品"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></button>
         <button class="ig-tab" data-tab="likes" aria-label="点赞"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.4-9.5-9A5.5 5.5 0 0 1 12 5.5 5.5 5.5 0 0 1 21.5 11c-2.5 4.6-9.5 9-9.5 9z"/></svg></button>
@@ -546,6 +547,8 @@
       <input class="field-input" id="fontUrlInput" placeholder="https://.../font.woff2">
       <div class="field-label">分类</div>
       <div class="chip-row" id="fontCatChips"></div>
+      <div class="field-label">来源（可选）</div>
+      <input class="field-input" id="fontSourceInput" placeholder="留空表示不标注来源">
 
       <div class="section-title">显示文字</div>
       <p class="hint">默认是一句系统文案，也可以整段替换成你自己想展示的内容（可以混着数字、符号、外语）。</p>
@@ -704,29 +707,6 @@
     <div class="sheet-box" id="reportSheetBox"></div>
   </div>
 
-  <!-- admin overlay -->
-  <div class="overlay" id="adminOverlay">
-    <div class="overlay-head">
-      <button class="icon-btn" id="adminBackBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
-      <div class="overlay-title">管理员</div>
-      <div style="width:34px;"></div>
-    </div>
-    <div class="overlay-body" style="padding:16px 18px;">
-      <div class="section-title" style="margin-top:0;">邀请码</div>
-      <div class="btn-row">
-        <button class="btn-outline" id="adminGenOneBtn">生成一个</button>
-        <button class="btn-outline" id="adminGenBatchBtn">批量生成 5 个</button>
-      </div>
-      <div class="row-list" id="adminInviteList" style="margin-top:8px;"></div>
-
-      <div class="section-title">举报 · 待处理</div>
-      <div class="row-list" id="adminPendingReports"></div>
-
-      <div class="section-title">举报 · 已处理</div>
-      <div class="row-list" id="adminResolvedReports"></div>
-    </div>
-  </div>
-
   <!-- edit profile sheet -->
   <div class="sheet-mask" id="profileSheetMask">
     <div class="sheet-box" id="profileSheetBox"></div>
@@ -789,7 +769,6 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /* ===================== state ===================== */
 let currentUserId = null;
-let currentUserIsAdmin = false;
 let currentUser = "";
 let statusMessage = "";
 let avatarDataUrl = null;
@@ -832,7 +811,6 @@ function applyProfile(profile){
   currentUser = profile.nickname;
   statusMessage = profile.status_message || '';
   avatarDataUrl = profile.avatar_url || null;
-  currentUserIsAdmin = !!profile.is_admin;
 }
 
 document.querySelectorAll('#authModeChips .chip').forEach(b=>{
@@ -910,12 +888,12 @@ async function loadCollections(){
   let byCollection = {};
   if(ids.length){
     const { data: emojis, error: eErr } = await sb.from('emojis')
-      .select('id, collection_id, description, sort_order, image_assets(source_url)')
+      .select('id, collection_id, description, sort_order, source, image_assets(source_url)')
       .in('collection_id', ids)
       .order('sort_order', {ascending:true});
     if(eErr){ showToast('加载表情失败：'+eErr.message); }
     (emojis||[]).forEach(e=>{
-      (byCollection[e.collection_id] ||= []).push({ id:e.id, url:(e.image_assets&&e.image_assets.source_url)||'', desc:e.description });
+      (byCollection[e.collection_id] ||= []).push({ id:e.id, url:(e.image_assets&&e.image_assets.source_url)||'', desc:e.description, source:e.source||'' });
     });
   }
   collections = (cols||[]).map(c=>({
@@ -925,6 +903,7 @@ async function loadCollections(){
     authorId: c.user_id,
     authorAvatarUrl: c.author_avatar_url || null,
     category: c.category,
+    source: c.source || '',
     likeCount: c.like_count,
     emojis: byCollection[c.id] || [],
     createdAt: new Date(c.created_at).getTime(),
@@ -944,26 +923,26 @@ async function loadAppData(){
 }
 
 /* ===================== remote mutations ===================== */
-async function createCollectionRemote(title, category, items){
-  const { data: coll, error: cErr } = await sb.from('collections').insert({ title, category, user_id: currentUserId }).select().single();
+async function createCollectionRemote(title, category, items, source){
+  const { data: coll, error: cErr } = await sb.from('collections').insert({ title, category, source: source||null, user_id: currentUserId }).select().single();
   if(cErr){ showToast('发布失败：'+cErr.message); return false; }
   const { data: assets, error: aErr } = await sb.from('image_assets')
     .insert(items.map(it=>({ source_type:'external_url', source_url: it.url.trim() }))).select();
   if(aErr){ showToast('图片保存失败：'+aErr.message); return false; }
-  const emojiRows = items.map((it,i)=>({ collection_id: coll.id, image_asset_id: assets[i].id, description: it.desc.trim()||'未命名', sort_order:i }));
+  const emojiRows = items.map((it,i)=>({ collection_id: coll.id, image_asset_id: assets[i].id, description: it.desc.trim()||'未命名', sort_order:i, source: it.source ? it.source.trim() : null }));
   const { error: eErr } = await sb.from('emojis').insert(emojiRows);
   if(eErr){ showToast('保存表情失败：'+eErr.message); return false; }
   return true;
 }
-async function updateCollectionRemote(id, title, category, items){
-  const { error: uErr } = await sb.from('collections').update({ title, category }).eq('id', id);
+async function updateCollectionRemote(id, title, category, items, source){
+  const { error: uErr } = await sb.from('collections').update({ title, category, source: source||null }).eq('id', id);
   if(uErr){ showToast('保存失败：'+uErr.message); return false; }
   const { error: dErr } = await sb.from('emojis').delete().eq('collection_id', id);
   if(dErr){ showToast('保存失败：'+dErr.message); return false; }
   const { data: assets, error: aErr } = await sb.from('image_assets')
     .insert(items.map(it=>({ source_type:'external_url', source_url: it.url.trim() }))).select();
   if(aErr){ showToast('图片保存失败：'+aErr.message); return false; }
-  const emojiRows = items.map((it,i)=>({ collection_id:id, image_asset_id: assets[i].id, description: it.desc.trim()||'未命名', sort_order:i }));
+  const emojiRows = items.map((it,i)=>({ collection_id:id, image_asset_id: assets[i].id, description: it.desc.trim()||'未命名', sort_order:i, source: it.source ? it.source.trim() : null }));
   const { error: eErr } = await sb.from('emojis').insert(emojiRows);
   if(eErr){ showToast('保存表情失败：'+eErr.message); return false; }
   return true;
@@ -1059,106 +1038,6 @@ function openReportSheet(workType, workId){
     if(error){ showToast('提交失败：'+error.message); return; }
     $('reportSheetMask').classList.remove('open');
     showToast('已提交，感谢反馈');
-  });
-}
-
-/* ===================== admin: invites + reports ===================== */
-$('openAdminBtn').addEventListener('click', async ()=>{
-  $('adminOverlay').classList.add('open');
-  await loadAdminInvites();
-  await loadAdminReports();
-});
-$('adminBackBtn').addEventListener('click', ()=>{ $('adminOverlay').classList.remove('open'); });
-
-async function adminGenerateInvites(count){
-  const { data, error } = await sb.rpc('admin_generate_invites', { invite_count: count });
-  if(error){ showToast('生成失败：'+error.message); return; }
-  if(!data.ok){ showToast('生成失败：'+data.error); return; }
-  showToast(`已生成 ${data.codes.length} 个邀请码`);
-  await loadAdminInvites();
-}
-$('adminGenOneBtn').addEventListener('click', ()=>adminGenerateInvites(1));
-$('adminGenBatchBtn').addEventListener('click', ()=>adminGenerateInvites(5));
-
-async function loadAdminInvites(){
-  const { data, error } = await sb.from('invites').select('*').order('created_at', {ascending:false});
-  if(error){ showToast('加载邀请码失败：'+error.message); return; }
-  const wrap = $('adminInviteList');
-  if(!data || !data.length){ wrap.innerHTML = '<p class="hint">还没有邀请码</p>'; return; }
-  wrap.innerHTML = data.map(inv=>`
-    <div class="row-item">
-      <div class="row-main">
-        <div style="font-family:ui-monospace,monospace; font-size:14px; font-weight:700;">${esc(inv.code)}</div>
-        <div style="font-size:11px; color:var(--text-dim);">${inv.status==='used'?'已使用':'未使用'}</div>
-      </div>
-      <button class="icon-btn" data-copy="${esc(inv.code)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
-    </div>`).join('');
-  wrap.querySelectorAll('[data-copy]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      try{ await navigator.clipboard.writeText(btn.dataset.copy); showToast('已复制'); }catch(e){ showToast('复制失败'); }
-    });
-  });
-}
-
-function findWorkTitle(type, id){
-  if(type==='collection'){ const c = collections.find(x=>x.id===id); return c ? c.title : '（作品已不存在）'; }
-  const f = fonts.find(x=>x.id===id); return f ? f.name : '（作品已不存在）';
-}
-async function loadAdminReports(){
-  const { data, error } = await sb.from('reports_with_details').select('*').order('created_at', {ascending:false});
-  if(error){ showToast('加载举报失败：'+error.message); return; }
-  const all = data || [];
-  renderAdminReports($('adminPendingReports'), all.filter(r=>r.status==='pending'), true);
-  renderAdminReports($('adminResolvedReports'), all.filter(r=>r.status!=='pending'), false);
-}
-function renderAdminReports(wrap, list, showActions){
-  if(!list.length){ wrap.innerHTML = '<p class="hint">暂无</p>'; return; }
-  wrap.innerHTML = list.map(r=>`
-    <div class="row-item" style="align-items:flex-start;">
-      <div class="row-main">
-        <div style="font-size:13px; font-weight:600;">${esc(r.reason)}</div>
-        ${r.description?`<div style="font-size:12px; color:var(--text-dim); margin-top:2px;">${esc(r.description)}</div>`:''}
-        <div style="font-size:11px; color:var(--text-faint); margin-top:4px;">作品：${esc(findWorkTitle(r.work_type, r.work_id))} · 举报人：${esc(r.reporter_nickname)} · ${new Date(r.created_at).toLocaleString('zh-CN')}</div>
-        ${showActions?`<div class="btn-row" style="margin-top:8px;">
-          <button class="btn-outline" data-view="${r.work_type}:${r.work_id}">查看作品</button>
-          <button class="btn-outline" data-dismiss="${r.id}">驳回</button>
-          <button class="btn-outline" data-resolve="${r.id}">标记已处理</button>
-          <button class="btn-solid" data-delwork="${r.work_type}:${r.work_id}:${r.id}">删除作品</button>
-        </div>`:''}
-      </div>
-    </div>`).join('');
-  wrap.querySelectorAll('[data-view]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const [type,id] = btn.dataset.view.split(':');
-      $('adminOverlay').classList.remove('open');
-      if(type==='collection') openDetail(id); else openFontDetail(id);
-    });
-  });
-  wrap.querySelectorAll('[data-dismiss]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      const { error } = await sb.from('reports').update({status:'dismissed'}).eq('id', btn.dataset.dismiss);
-      if(error){ showToast('操作失败：'+error.message); return; }
-      showToast('已驳回'); await loadAdminReports();
-    });
-  });
-  wrap.querySelectorAll('[data-resolve]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      const { error } = await sb.from('reports').update({status:'resolved'}).eq('id', btn.dataset.resolve);
-      if(error){ showToast('操作失败：'+error.message); return; }
-      showToast('已标记处理'); await loadAdminReports();
-    });
-  });
-  wrap.querySelectorAll('[data-delwork]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const [type,id,reportId] = btn.dataset.delwork.split(':');
-      openConfirmSheet('删除作品', '这个作品会被永久删除，无法恢复。', '删除', async ()=>{
-        const { data, error } = await sb.rpc('admin_delete_work', { p_work_type:type, p_work_id:id });
-        if(error || !data.ok){ showToast('删除失败：'+(error?error.message:data.error)); return; }
-        await sb.from('reports').update({status:'resolved'}).eq('id', reportId);
-        showToast('已删除作品');
-        await loadCollections(); await loadFonts(); await loadAdminReports(); renderAll();
-      });
-    });
   });
 }
 
@@ -1286,7 +1165,6 @@ function renderProfileBits(){
   $('statWorks').textContent = collections.filter(c=>c.authorId===currentUserId).length + fonts.filter(f=>f.user_id===currentUserId).length;
   $('statLikes').textContent = liked.size;
   $('statFavs').textContent = favorited.size;
-  $('adminEntryRow').style.display = currentUserIsAdmin ? 'block' : 'none';
 }
 $('homeStatusInput').addEventListener('input', e=>{
   statusMessage = e.target.value;
@@ -1650,7 +1528,7 @@ function renderDetail(justToggled){
     <div class="detail-cover">${coverHtml(c.emojis)}</div>
     <div class="detail-meta">
       <div class="detail-title">${esc(c.title)}</div>
-      <div class="detail-sub">${esc(c.author)} · ${esc(c.category)} · ${c.emojis.length} 个表情</div>
+      <div class="detail-sub">${esc(c.author)} · ${esc(c.category)} · ${c.emojis.length} 个表情${c.source?` · 来源：${esc(c.source)}`:''}</div>
       <div class="action-row">
         <button class="action-btn ${isLiked?'active':''}" id="likeBtn">${heartIcon()}<span>${c.likeCount + (isLiked?1:0)}</span></button>
         <button class="action-btn ${isFav?'active':''}" id="favBtn">${bookmarkIcon()}<span>${isFav?'已收藏':'收藏'}</span></button>
@@ -1714,15 +1592,15 @@ function updateEditingBanner(){
 }
 function cancelEditCollection(){
   editingCollectionId = null;
-  pubItems=[{id:uid(),url:'',desc:'',status:'idle'}]; batchMode=false; batchSelected=new Set();
+  pubItems=[{id:uid(),url:'',desc:'',status:'idle',source:''}]; batchMode=false; batchSelected=new Set();
   renderPubItems(); updateEditingBanner();
   showToast('已取消编辑');
 }
 function startEditCollection(c){
   const proceed = ()=>{
     editingCollectionId = c.id;
-    pubItems = c.emojis.map(e=>({id:e.id, url:e.url, desc:e.desc, status:'idle'}));
-    if(!pubItems.length) pubItems=[{id:uid(),url:'',desc:'',status:'idle'}];
+    pubItems = c.emojis.map(e=>({id:e.id, url:e.url, desc:e.desc, status:'idle', source:e.source||'', sourceOpen: !!e.source}));
+    if(!pubItems.length) pubItems=[{id:uid(),url:'',desc:'',status:'idle',source:''}];
     batchMode=false; batchSelected=new Set();
     renderPubItems(); updateEditingBanner();
     $('detailOverlay').classList.remove('open');
@@ -1771,7 +1649,14 @@ function openDownloadSheet(c){
     let fmt = 'fullcolon';
     let customSep = '|';
     const sep = () => fmt==='custom' ? customSep : FORMATS.find(f=>f.id===fmt).sep;
-    const currentText = () => chosen.map(e=>`${e.desc}${sep()}${e.url}`).join('\n');
+    const currentText = () => {
+      const mainLines = chosen.map(e=>`${e.desc}${sep()}${e.url}`).join('\n');
+      const sources = new Set();
+      if(c.source && c.source.trim()) sources.add(c.source.trim());
+      chosen.forEach(e=>{ if(e.source && e.source.trim()) sources.add(e.source.trim()); });
+      if(!sources.size) return mainLines;
+      return `来源：${Array.from(sources).join('、')}\n\n${mainLines}`;
+    };
 
     function draw(){
       $('dlSheetBox').innerHTML = `
@@ -1846,7 +1731,7 @@ document.querySelectorAll('#pubTypeToggle button').forEach(b=>{
 });
 
 /* ===================== publish: item list (manual + imported + AI-filled), shared render for main page & AI overlay ===================== */
-let pubItems = [{id:uid(), url:'', desc:'', status:'idle'}];
+let pubItems = [{id:uid(), url:'', desc:'', status:'idle', source:''}];
 let batchMode = false;
 let batchSelected = new Set();
 
@@ -1868,11 +1753,15 @@ function renderItemsList(wrap){
           <button class="row-move" data-move="1" data-id="${it.id}" ${i===pubItems.length-1?'disabled':''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
           <button class="row-del" data-del="${it.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg></button>
         </div>`;
+    const sourceRow = (it.sourceOpen || it.source)
+      ? `<input class="source-input" data-f="source" value="${esc(it.source||'')}" placeholder="来源（可选，留空则用整个作品的统一来源）">`
+      : `<button class="row-source-toggle" data-sourcetoggle="${it.id}">＋ 单独填这条的来源</button>`;
     return `<div class="row-item" data-id="${it.id}">
       ${thumbHtml(it.url)}
       <div class="row-main">
         <input class="desc" data-f="desc" value="${esc(it.desc)}" placeholder="描述，例如：真的服了">
         <input class="url" data-f="url" value="${esc(it.url)}" placeholder="图片 URL">
+        ${sourceRow}
       </div>
       <div class="row-status">${statusDot(it.status)}</div>
       ${trailing}
@@ -1886,6 +1775,12 @@ function renderItemsList(wrap){
         const img = e.target.closest('.row-item').querySelector('.thumb img');
         if(img) img.src = e.target.value;
       }
+    });
+  });
+  wrap.querySelectorAll('[data-sourcetoggle]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const it = pubItems.find(x=>x.id===btn.dataset.sourcetoggle);
+      if(it){ it.sourceOpen = true; renderPubItems(); }
     });
   });
   if(batchMode){
@@ -1906,7 +1801,7 @@ function renderItemsList(wrap){
         const hasContent = it && (it.url.trim() || it.desc.trim());
         const doDelete = ()=>{
           pubItems = pubItems.filter(x=>x.id!==btn.dataset.del);
-          if(!pubItems.length) pubItems=[{id:uid(),url:'',desc:'',status:'idle'}];
+          if(!pubItems.length) pubItems=[{id:uid(),url:'',desc:'',status:'idle',source:''}];
           renderPubItems();
         };
         if(hasContent){ openConfirmSheet('删除这条表情', '删除后需要重新添加。', '删除', doDelete); }
@@ -1920,8 +1815,8 @@ function renderPubItems(){
   if($('aiOverlay').classList.contains('open')) renderItemsList($('aiItemsList'));
   syncBatchUI();
 }
-$('pubAddRowBtn').addEventListener('click', ()=>{ pubItems.push({id:uid(),url:'',desc:'',status:'idle'}); renderPubItems(); });
-$('aiAddRowBtn').addEventListener('click', ()=>{ pubItems.push({id:uid(),url:'',desc:'',status:'idle'}); renderPubItems(); });
+$('pubAddRowBtn').addEventListener('click', ()=>{ pubItems.push({id:uid(),url:'',desc:'',status:'idle',source:''}); renderPubItems(); });
+$('aiAddRowBtn').addEventListener('click', ()=>{ pubItems.push({id:uid(),url:'',desc:'',status:'idle',source:''}); renderPubItems(); });
 
 function copyItemsList(){
   const validItems = pubItems.filter(it=>it.url.trim());
@@ -1957,7 +1852,7 @@ function setupBatchControls(ids){
     if(!batchSelected.size){ showToast('还没有选中任何表情'); return; }
     openConfirmSheet('批量删除', `将删除 ${batchSelected.size} 条表情，无法恢复。`, '删除', ()=>{
       pubItems = pubItems.filter(it=>!batchSelected.has(it.id));
-      if(!pubItems.length) pubItems=[{id:uid(),url:'',desc:'',status:'idle'}];
+      if(!pubItems.length) pubItems=[{id:uid(),url:'',desc:'',status:'idle',source:''}];
       batchSelected = new Set();
       renderPubItems();
       showToast('已删除');
@@ -2024,8 +1919,8 @@ function createImportWidget(ids){
     const valid = rows.filter(r=>r.url && !r.error);
     if(!valid.length){ showToast('没有可导入的内容'); return; }
     const fresh = pubItems.filter(it=>it.url.trim());
-    pubItems = [...fresh, ...valid.map(r=>({id:uid(), url:r.url, desc:r.desc||'', status:'idle'}))];
-    if(!pubItems.length) pubItems=[{id:uid(),url:'',desc:'',status:'idle'}];
+    pubItems = [...fresh, ...valid.map(r=>({id:uid(), url:r.url, desc:r.desc||'', status:'idle', source:''}))];
+    if(!pubItems.length) pubItems=[{id:uid(),url:'',desc:'',status:'idle',source:''}];
     renderPubItems();
     input.value=''; parse();
     showToast(`已导入 ${valid.length} 条到列表`);
@@ -2255,6 +2150,7 @@ function openPublishSheet(){
   let category = editing && CATEGORIES.includes(editing.category) ? editing.category : CATEGORIES[0];
   let usingCustom = editing ? !CATEGORIES.includes(editing.category) : false;
   let customCat = usingCustom ? editing.category : '';
+  let source = editing ? (editing.source || '') : '';
   $('pubSheetMask').classList.add('open');
   draw();
 
@@ -2268,35 +2164,40 @@ function openPublishSheet(){
         <div class="field-label">分类</div>
         <div class="chip-row" id="pubModalCatRow"></div>
         <input class="field-input" id="pubModalCustomCat" placeholder="自定义分类（仅用于本作品）" style="display:${usingCustom?'block':'none'}; margin-top:8px;" value="${esc(customCat)}">
+        <div class="field-label">来源（可选）</div>
+        <input class="field-input" id="pubModalSource" placeholder="整个作品统一的来源，留空表示不标注" value="${esc(source)}">
+        <p class="hint" style="margin-top:4px;">如果某几条表情来源不一样，可以在表情列表里单独给那一条填来源，会优先用那条自己的。</p>
         <p class="hint" style="margin-top:12px;">共 ${count} 个表情将被${editing?'保存':'发布'}。</p>
       </div>
       <div class="sheet-footer"><button class="btn-solid" id="pubModalConfirmBtn">${editing?'确认保存':'确认发布'}</button></div>
     `;
     $('pubSheetCloseBtn').addEventListener('click', ()=>$('pubSheetMask').classList.remove('open'));
     $('pubModalTitle').addEventListener('input', e=>{ title = e.target.value; });
+    $('pubModalSource').addEventListener('input', e=>{ source = e.target.value; });
     const catWrap = $('pubModalCatRow'); catWrap.innerHTML='';
     CATEGORIES.forEach(cat=>{
       const b=document.createElement('button'); b.className='chip'+(!usingCustom&&category===cat?' active':''); b.textContent=cat;
-      b.addEventListener('click',()=>{ title=$('pubModalTitle').value; customCat=$('pubModalCustomCat').value; category=cat; usingCustom=false; draw(); });
+      b.addEventListener('click',()=>{ title=$('pubModalTitle').value; customCat=$('pubModalCustomCat').value; source=$('pubModalSource').value; category=cat; usingCustom=false; draw(); });
       catWrap.appendChild(b);
     });
     const customBtn=document.createElement('button'); customBtn.className='chip'+(usingCustom?' active':''); customBtn.textContent='＋ 自定义';
-    customBtn.addEventListener('click',()=>{ title=$('pubModalTitle').value; customCat=$('pubModalCustomCat').value; usingCustom=true; draw(); });
+    customBtn.addEventListener('click',()=>{ title=$('pubModalTitle').value; customCat=$('pubModalCustomCat').value; source=$('pubModalSource').value; usingCustom=true; draw(); });
     catWrap.appendChild(customBtn);
     const cc = $('pubModalCustomCat'); if(cc) cc.addEventListener('input', e=>{ customCat=e.target.value; });
     $('pubModalConfirmBtn').addEventListener('click', async ()=>{
       const finalTitle = $('pubModalTitle').value.trim();
       if(!finalTitle){ showToast('请填写合集名称'); return; }
       const finalCategory = usingCustom && $('pubModalCustomCat').value.trim() ? $('pubModalCustomCat').value.trim() : category;
+      const finalSource = $('pubModalSource').value.trim();
       const validItems = pubItems.filter(it=>it.url.trim());
       $('pubModalConfirmBtn').disabled = true;
       $('pubModalConfirmBtn').textContent = editing ? '保存中…' : '发布中…';
       if(editing){
-        const ok = await updateCollectionRemote(editing.id, finalTitle, finalCategory, validItems);
+        const ok = await updateCollectionRemote(editing.id, finalTitle, finalCategory, validItems, finalSource);
         $('pubModalConfirmBtn').disabled = false;
         if(!ok){ $('pubModalConfirmBtn').textContent = '确认保存'; return; }
         editingCollectionId = null;
-        pubItems=[{id:uid(),url:'',desc:'',status:'idle'}]; batchMode=false; batchSelected=new Set(); renderPubItems();
+        pubItems=[{id:uid(),url:'',desc:'',status:'idle',source:''}]; batchMode=false; batchSelected=new Set(); renderPubItems();
         updateEditingBanner();
         $('importPanel').classList.remove('open'); $('toggleImportBtn').classList.remove('active');
         $('pubSheetMask').classList.remove('open');
@@ -2304,10 +2205,10 @@ function openPublishSheet(){
         await loadAppData();
         showPage('my');
       } else {
-        const ok = await createCollectionRemote(finalTitle, finalCategory, validItems);
+        const ok = await createCollectionRemote(finalTitle, finalCategory, validItems, finalSource);
         $('pubModalConfirmBtn').disabled = false;
         if(!ok){ $('pubModalConfirmBtn').textContent = '确认发布'; return; }
-        pubItems=[{id:uid(),url:'',desc:'',status:'idle'}]; batchMode=false; batchSelected=new Set(); renderPubItems();
+        pubItems=[{id:uid(),url:'',desc:'',status:'idle',source:''}]; batchMode=false; batchSelected=new Set(); renderPubItems();
         $('importPanel').classList.remove('open'); $('toggleImportBtn').classList.remove('active');
         $('pubSheetMask').classList.remove('open');
         showToast('已发布');
@@ -2442,6 +2343,7 @@ function renderFontDetailBody(f, justToggled){
   const isLiked = liked.has(f.id), isFav = favorited.has(f.id);
   $('fontDetailBody').innerHTML = `
     <div class="font-card-stage">${fontCanvasHtml(f, false)}</div>
+    ${f.source?`<p class="hint" style="margin-top:8px;">来源：${esc(f.source)}</p>`:''}
     <div class="action-row" style="margin-top:16px;">
       <button class="action-btn ${isLiked?'active':''}" id="fontLikeBtn">${heartIcon()}<span>${(f.like_count||0) + (isLiked?1:0)}</span></button>
       <button class="action-btn ${isFav?'active':''}" id="fontFavBtn">${bookmarkIcon()}<span>${isFav?'已收藏':'收藏'}</span></button>
@@ -2479,18 +2381,20 @@ function openFontEditor(existing){
   fontEditorState = existing ? {
     name: existing.name, url: existing.url, text: existing.display_text || existing.name,
     category: FONT_CATEGORIES.includes(existing.category) ? existing.category : FONT_CATEGORIES[0],
+    source: existing.source || '',
     langs: Object.fromEntries(Object.keys(LANG_SAMPLES).map(k=>[k, (existing.languages||[]).includes(k)])),
     customBlocks: JSON.parse(JSON.stringify(existing.custom_blocks||[])),
     bg: existing.bg_color || '#FFFFFF', bgImage: existing.bg_image||'', fontSize: existing.font_size||48, spacing: existing.letter_spacing||0, css: existing.custom_css||'',
     align: existing.text_align || 'center',
   } : {
-    name:'', url:'', text:'杂货铺 Aa', category: FONT_CATEGORIES[0],
+    name:'', url:'', text:'杂货铺 Aa', category: FONT_CATEGORIES[0], source:'',
     langs: Object.fromEntries(Object.keys(LANG_SAMPLES).map(k=>[k,false])), customBlocks:[],
     bg:'#FFFFFF', bgImage:'', fontSize:32, spacing:0, css:'', align:'center',
   };
   $('fontEditorTitle').textContent = existing ? '编辑字体' : '添加字体';
   $('fontNameInput').value = fontEditorState.name;
   $('fontUrlInput').value = fontEditorState.url;
+  $('fontSourceInput').value = fontEditorState.source;
   $('fontTextInput').value = fontEditorState.text;
   $('fontSizeSlider').value = fontEditorState.fontSize; $('fontSizeLabel').textContent = fontEditorState.fontSize;
   $('fontSpacingSlider').value = fontEditorState.spacing; $('fontSpacingLabel').textContent = fontEditorState.spacing;
@@ -2644,6 +2548,7 @@ $('fontStageExpandBtn').addEventListener('click', ()=>{
 });
 $('fontNameInput').addEventListener('input', e=>{ fontEditorState.name=e.target.value; renderFontEditorPreview(); });
 $('fontUrlInput').addEventListener('input', e=>{ fontEditorState.url=e.target.value; renderFontEditorPreview(); });
+$('fontSourceInput').addEventListener('input', e=>{ fontEditorState.source=e.target.value; });
 $('fontTextInput').addEventListener('input', e=>{ fontEditorState.text=e.target.value; renderFontEditorPreview(); });
 $('fontBgColorPicker').addEventListener('input', e=>{ fontEditorState.bg=e.target.value; fontEditorState.bgImage=''; $('fontBgImageInput').value=''; renderFontEditorBgChips(); renderFontEditorPreview(); });
 $('fontBgImageInput').addEventListener('input', e=>{ fontEditorState.bgImage=e.target.value.trim(); renderFontEditorPreview(); });
@@ -2660,6 +2565,7 @@ $('fontEditorSubmitBtn').addEventListener('click', async ()=>{
     name, url,
     display_text: text,
     category: fontEditorState.category,
+    source: fontEditorState.source ? fontEditorState.source.trim() : null,
     languages: Object.keys(fontEditorState.langs).filter(k=>fontEditorState.langs[k]),
     custom_blocks: fontEditorState.customBlocks.filter(b=>b.text && b.text.trim()),
     bg_color: fontEditorState.bg,
