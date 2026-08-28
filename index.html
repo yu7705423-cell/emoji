@@ -36,7 +36,6 @@
 
   .frame{max-width:480px; margin:0 auto; height:100vh; height:var(--app-height, 100vh); display:flex; flex-direction:column; border-left:1px solid var(--border); border-right:1px solid var(--border); background:var(--bg); overflow:hidden;}
 
-  .topbar{flex-shrink:0; display:flex; align-items:center; justify-content:space-between; height:calc(54px + env(safe-area-inset-top)); padding:env(safe-area-inset-top) 18px 0; background:var(--bg); border-bottom:1px solid var(--border);}
   .wordmark{font-family:'Newsreader', Georgia, serif; font-style:italic; font-weight:500; font-size:21px;}
   .icon-btn{width:34px; height:34px; border-radius:50%; border:none; background:transparent; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--text); flex-shrink:0; transition:transform .12s ease, background .12s ease;}
   .icon-btn:hover{background:var(--bg-hover);}
@@ -45,7 +44,7 @@
 
   .page-scroll{flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch;}
 
-  .page{display:none; padding:14px 18px 22px;}
+  .page{display:none; padding:calc(14px + env(safe-area-inset-top)) 18px 22px;}
   .page.active{display:block;}
   .page-head-row{display:flex; align-items:center; justify-content:space-between;}
   .page-head-title{font-family:'Newsreader', Georgia, serif; font-style:italic; font-size:17px;}
@@ -196,11 +195,13 @@
   .tab-btn span{font-size:10px; font-weight:600;}
   .tab-btn.active{color:var(--ink);}
 
-  .cat-sticky{position:sticky; top:0; z-index:5; background:var(--bg); margin:-14px -18px 0; padding:14px 18px 8px; border-bottom:1px solid var(--border-soft);}
+  .cat-sticky{position:sticky; top:0; z-index:5; background:var(--bg); margin:0 -18px; padding:10px 18px 8px; border-bottom:1px solid var(--border-soft);}
 
   .type-toggle{display:flex; border:1px solid var(--border); border-radius:999px; padding:3px; gap:3px;}
   .type-toggle button{flex:1; padding:9px 0; border:none; background:none; border-radius:999px; font-size:13px; font-weight:700; color:var(--text-dim); cursor:pointer; transition:background .15s ease, color .15s ease;}
   .type-toggle button.active{background:var(--ink); color:var(--ink-contrast);}
+  .toggle-search-row{display:flex; align-items:center; gap:10px; margin-top:14px;}
+  .toggle-search-row .type-toggle{flex:1;}
 
   /* P1: home profile banner */
   .profile-banner{display:flex; align-items:center; justify-content:space-between; gap:14px; padding-bottom:16px;}
@@ -300,13 +301,6 @@
     <p class="join-error" id="joinError"></p>
   </div>
 
-  <div class="topbar">
-    <div class="wordmark">杂货铺</div>
-    <button class="icon-btn" id="topSearchBtn" aria-label="搜索" style="display:none;">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-    </button>
-  </div>
-
   <div class="page-scroll">
     <!-- HOME -->
     <div class="page active" id="page-home">
@@ -317,9 +311,12 @@
         </div>
         <button class="avatar-btn" id="homeAvatarBtn" aria-label="更换头像"><span class="ph" id="homeAvatarPh">+</span><img id="homeAvatarImg" style="display:none;"></button>
       </div>
-      <div class="type-toggle" id="homeTypeToggle">
-        <button class="active" data-type="collections">表情包</button>
-        <button data-type="fonts">字体</button>
+      <div class="toggle-search-row">
+        <div class="type-toggle" id="homeTypeToggle">
+          <button class="active" data-type="collections">表情包</button>
+          <button data-type="fonts">字体</button>
+        </div>
+        <button class="icon-btn" id="homeSearchBtn" aria-label="搜索"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></button>
       </div>
       <div id="homeSearchWrap" style="display:none; margin-top:10px;">
         <input class="field-input" id="homeSearch" placeholder="搜索表情包或字体">
@@ -334,9 +331,12 @@
 
     <!-- CATEGORY -->
     <div class="page" id="page-category">
-      <div class="type-toggle" id="catTypeToggle">
-        <button class="active" data-type="collections">表情包</button>
-        <button data-type="fonts">字体</button>
+      <div class="toggle-search-row" style="margin-top:2px;">
+        <div class="type-toggle" id="catTypeToggle">
+          <button class="active" data-type="collections">表情包</button>
+          <button data-type="fonts">字体</button>
+        </div>
+        <button class="icon-btn" id="catSearchBtn" aria-label="搜索"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></button>
       </div>
       <div id="catSearchWrap" style="display:none; margin-top:10px;">
         <input class="field-input" id="catSearch" placeholder="搜索作品 / 描述">
@@ -683,13 +683,17 @@ const $ = id => document.getElementById(id);
 const uid = () => Math.random().toString(36).slice(2,10);
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-/* ===================== viewport height fix (avoids mobile browser url-bar gaps) ===================== */
+/* ===================== viewport height fix (avoids mobile browser url-bar / PWA chrome gaps) ===================== */
 function setAppHeight(){
   document.documentElement.style.setProperty('--app-height', window.innerHeight + 'px');
 }
 window.addEventListener('resize', setAppHeight);
 window.addEventListener('orientationchange', setAppHeight);
+window.addEventListener('pageshow', setAppHeight);
+document.addEventListener('visibilitychange', setAppHeight);
 setAppHeight();
+// PWA standalone chrome can settle a beat after launch; re-check a few times early on.
+[50, 150, 300, 600, 1200].forEach(ms=>setTimeout(setAppHeight, ms));
 
 /* ===================== supabase client ===================== */
 const SUPABASE_URL = 'https://mejkhrxqdlybfatzecsc.supabase.co';
@@ -941,19 +945,17 @@ function showPage(id){
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.page===id));
   document.querySelector('.page-scroll').scrollTop = 0;
   currentPageId = id;
-  $('topSearchBtn').style.display = (id==='home'||id==='category') ? 'flex' : 'none';
   renderAll();
 }
-$('topSearchBtn').addEventListener('click', ()=>{
-  if(currentPageId==='home'){
-    const wrap=$('homeSearchWrap'); const opening = wrap.style.display==='none';
-    wrap.style.display = opening ? 'block' : 'none';
-    if(opening){ $('homeSearch').focus(); } else { $('homeSearch').value=''; renderHome(); }
-  } else if(currentPageId==='category'){
-    const wrap=$('catSearchWrap'); const opening = wrap.style.display==='none';
-    wrap.style.display = opening ? 'block' : 'none';
-    if(opening){ $('catSearch').focus(); } else { $('catSearch').value=''; renderCategory(); }
-  }
+$('homeSearchBtn').addEventListener('click', ()=>{
+  const wrap=$('homeSearchWrap'); const opening = wrap.style.display==='none';
+  wrap.style.display = opening ? 'block' : 'none';
+  if(opening){ $('homeSearch').focus(); } else { $('homeSearch').value=''; renderHome(); }
+});
+$('catSearchBtn').addEventListener('click', ()=>{
+  const wrap=$('catSearchWrap'); const opening = wrap.style.display==='none';
+  wrap.style.display = opening ? 'block' : 'none';
+  if(opening){ $('catSearch').focus(); } else { $('catSearch').value=''; renderCategory(); }
 });
 
 /* ===================== profile: nickname / status / avatar ===================== */
@@ -2298,7 +2300,6 @@ renderPubItems();
 updateEditingBanner();
 updateProviderForm();
 $('aiPromptInput').value = DEFAULT_PROMPT;
-$('topSearchBtn').style.display = 'flex';
 initAuth();
 </script>
 </body>
