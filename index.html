@@ -39,7 +39,7 @@
   @media (prefers-reduced-motion:reduce){ *{animation-duration:.001s !important; transition-duration:.001s !important;} }
   @media (max-width:600px){ input, textarea, select{font-size:16px !important;} }
 
-  .frame{max-width:480px; margin:0 auto; height:100vh; height:var(--app-height, 100vh); display:flex; flex-direction:column; border-left:1px solid var(--border); border-right:1px solid var(--border); background:var(--bg); overflow:hidden;}
+  .frame{max-width:480px; margin:0 auto; height:100vh; display:flex; flex-direction:column; border-left:1px solid var(--border); border-right:1px solid var(--border); background:var(--bg); overflow:hidden;}
 
   .wordmark{font-family:'Newsreader', Georgia, serif; font-style:italic; font-weight:500; font-size:21px;}
   .icon-btn{width:34px; height:34px; border-radius:50%; border:none; background:transparent; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--text); flex-shrink:0; transition:transform .12s ease, background .12s ease;}
@@ -752,25 +752,6 @@ const $ = id => document.getElementById(id);
 })();
 const uid = () => Math.random().toString(36).slice(2,10);
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-/* ===================== viewport height fix (avoids mobile browser url-bar / PWA chrome gaps) ===================== */
-function setAppHeight(){
-  document.documentElement.style.setProperty('--app-height', window.innerHeight + 'px');
-}
-window.addEventListener('resize', setAppHeight);
-window.addEventListener('orientationchange', setAppHeight);
-window.addEventListener('pageshow', setAppHeight);
-document.addEventListener('visibilitychange', setAppHeight);
-setAppHeight();
-[50, 150, 300, 600, 1200].forEach(ms=>setTimeout(setAppHeight, ms));
-
-/* .frame is pinned with position:fixed;inset:0 (see CSS) instead of any
-   vh/dvh unit — iOS standalone PWA mode has historically miscalculated
-   dvh (reserving space as if a browser toolbar could still appear even
-   though it can't), which left a gap at the bottom. Fixed positioning
-   sidesteps that entirely and matches how .overlay / #loadingOverlay
-   etc. already anchor themselves in this file. */
-
 
 /* ===================== supabase client ===================== */
 const SUPABASE_URL = 'https://mejkhrxqdlybfatzecsc.supabase.co';
