@@ -39,7 +39,7 @@
   @media (prefers-reduced-motion:reduce){ *{animation-duration:.001s !important; transition-duration:.001s !important;} }
   @media (max-width:600px){ input, textarea, select{font-size:16px !important;} }
 
-  .frame{position:fixed; inset:0; max-width:480px; margin:0 auto; display:flex; flex-direction:column; border-left:1px solid var(--border); border-right:1px solid var(--border); background:var(--bg); overflow:hidden;}
+  .frame{max-width:480px; margin:0 auto; height:100vh; height:var(--app-height, 100vh); display:flex; flex-direction:column; border-left:1px solid var(--border); border-right:1px solid var(--border); background:var(--bg); overflow:hidden;}
 
   .wordmark{font-family:'Newsreader', Georgia, serif; font-style:italic; font-weight:500; font-size:21px;}
   .icon-btn{width:34px; height:34px; border-radius:50%; border:none; background:transparent; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--text); flex-shrink:0; transition:transform .12s ease, background .12s ease;}
@@ -196,7 +196,7 @@
 
   .tabbar{flex-shrink:0; border-top:1px solid var(--border); background:var(--bg); display:flex; padding-bottom:env(safe-area-inset-bottom);}
   .tab-btn{flex:1; background:none; border:none; padding:9px 4px 10px; display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; color:var(--text-faint);}
-  .tab-btn svg{width:20px; height:20px;}
+  .tab-btn svg{width:20px; height:20px; transform:translateY(3px);}
   .tab-btn span{font-size:10px; font-weight:600;}
   .tab-btn.active{color:var(--ink);}
 
@@ -257,6 +257,10 @@
   #joinOverlay.open{display:flex;}
   .join-error{font-size:12px; color:var(--text); font-weight:600; margin-top:10px; display:none; text-align:center;}
 
+  /* first-launch disclaimer */
+  #disclaimerOverlay{position:fixed; inset:0; z-index:200; background:var(--bg); display:flex; align-items:center; justify-content:center; padding:28px; max-width:480px; margin:0 auto;}
+  .disclaimer-box{max-width:340px;}
+
   /* fonts section */
   .font-card{display:block; width:100%; text-align:left; background:none; border:none; padding:14px 0; border-bottom:1px solid var(--border-soft); cursor:pointer; transition:transform .12s ease;}
   .font-card:active{transform:scale(.98);}
@@ -292,6 +296,21 @@
 </head>
 <body>
 <div class="frame">
+
+  <div id="disclaimerOverlay">
+    <div class="disclaimer-box">
+      <div class="wordmark" style="font-size:22px; margin-bottom:12px;">使用须知</div>
+      <div class="hint" style="line-height:1.9; font-size:12.5px;">
+        请上传合法、合规内容：<br>
+        · 禁止未经允许上传、转载、传播他人受版权保护的内容<br>
+        · 禁止上传色情 / 黄色内容<br>
+        · 禁止上传暴力相关内容<br>
+        · 禁止上传政治相关内容<br><br>
+        你需要对自己上传的内容负责。
+      </div>
+      <button class="btn-solid" id="disclaimerAckBtn" style="margin-top:20px;">我已了解</button>
+    </div>
+  </div>
 
   <div id="loadingOverlay"><div class="boot-spin"></div></div>
 
@@ -515,7 +534,6 @@
         <button class="stage-expand-btn" id="fontStageExpandBtn" type="button" title="放大预览"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg></button>
         <div class="font-card-canvas" id="fontCardCanvas">
           <div class="font-card-main" id="fontCardMain"></div>
-          <div class="font-card-digits" id="fontCardDigits">0123456789</div>
           <div id="fontCardLangBlocks"></div>
         </div>
       </div>
@@ -721,8 +739,30 @@ const FORMATS = [
   {id:'none',         label:'无分隔符',      sep:''},
 ];
 const $ = id => document.getElementById(id);
+
+/* ===================== first-launch disclaimer gate ===================== */
+(function(){
+  const KEY = 'zhp_disclaimer_ack_v1';
+  const overlay = document.getElementById('disclaimerOverlay');
+  if(localStorage.getItem(KEY) === '1'){ overlay.style.display = 'none'; }
+  document.getElementById('disclaimerAckBtn').addEventListener('click', ()=>{
+    localStorage.setItem(KEY, '1');
+    overlay.style.display = 'none';
+  });
+})();
 const uid = () => Math.random().toString(36).slice(2,10);
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+/* ===================== viewport height fix (avoids mobile browser url-bar / PWA chrome gaps) ===================== */
+function setAppHeight(){
+  document.documentElement.style.setProperty('--app-height', window.innerHeight + 'px');
+}
+window.addEventListener('resize', setAppHeight);
+window.addEventListener('orientationchange', setAppHeight);
+window.addEventListener('pageshow', setAppHeight);
+document.addEventListener('visibilitychange', setAppHeight);
+setAppHeight();
+[50, 150, 300, 600, 1200].forEach(ms=>setTimeout(setAppHeight, ms));
 
 /* .frame is pinned with position:fixed;inset:0 (see CSS) instead of any
    vh/dvh unit — iOS standalone PWA mode has historically miscalculated
@@ -871,6 +911,7 @@ async function loadCollections(){
     title: c.title,
     author: c.author_nickname,
     authorId: c.user_id,
+    authorAvatarUrl: c.author_avatar_url || null,
     category: c.category,
     likeCount: c.like_count,
     emojis: byCollection[c.id] || [],
@@ -975,10 +1016,23 @@ function openConfirmSheet(title, body, confirmLabel, onConfirm){
 }
 
 /* ===================== generic share sheet: link or image card ===================== */
+function waitForCardImages(node){
+  const imgs = Array.from(node.querySelectorAll('img'));
+  return Promise.all(imgs.map(img=>{
+    if(img.complete && img.naturalWidth > 0) return Promise.resolve();
+    return new Promise(resolve=>{
+      img.addEventListener('load', resolve, {once:true});
+      img.addEventListener('error', resolve, {once:true});
+    });
+  }));
+}
 async function renderCardToBlob(node){
   document.body.appendChild(node);
   try{
-    const canvas = await html2canvas(node, { backgroundColor:null, useCORS:true, scale:2 });
+    await waitForCardImages(node);
+    try{ await document.fonts.ready; }catch(e){}
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+    const canvas = await html2canvas(node, { backgroundColor:'#ffffff', useCORS:true, scale:2 });
     return await new Promise(res=>canvas.toBlob(res, 'image/png'));
   } finally {
     node.remove();
@@ -999,7 +1053,7 @@ async function shareOrDownloadImageBlob(blob, filename, title){
 }
 function shareCardWrap(innerHtml){
   const wrap = document.createElement('div');
-  wrap.style.cssText = 'position:fixed; top:0; left:0; transform:translateX(-140%); width:300px; background:#fff; border-radius:20px; overflow:hidden; font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;';
+  wrap.style.cssText = 'position:absolute; top:0; left:-9999px; width:300px; background:#fff; border-radius:20px; overflow:hidden; font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;';
   wrap.innerHTML = innerHtml;
   return wrap;
 }
@@ -1286,12 +1340,12 @@ function renderItemsGrid(container, items, emptyText, action){
 /* ===================== P3: long-press peek preview ===================== */
 function showPeek(id){
   const c = collections.find(x=>x.id===id); if(!c) return;
-  const isSelf = c.authorId===currentUserId && avatarDataUrl;
+  const avatarSrc = (c.authorId===currentUserId && avatarDataUrl) ? avatarDataUrl : c.authorAvatarUrl;
   $('peekCard').innerHTML = `
     <div>${coverHtml(c.emojis, true)}</div>
     <div class="peek-body">
       <div class="peek-head">
-        <div class="peek-avatar">${isSelf?`<img src="${avatarDataUrl}">`:`<span>${esc(c.author.slice(0,1))}</span>`}</div>
+        <div class="peek-avatar">${avatarSrc?`<img src="${esc(avatarSrc)}">`:`<span>${esc(c.author.slice(0,1))}</span>`}</div>
         <div class="peek-author">${esc(c.author)}</div>
       </div>
       <div class="peek-title">${esc(c.title)}</div>
@@ -2136,6 +2190,8 @@ const LANG_SAMPLES = {
   ko: { label:'한국어', text:'안녕하세요, 오늘 날씨가 좋네요' },
   en: { label:'English', text:'The quick brown fox jumps over the lazy dog' },
   fr: { label:'Français', text:"Bonjour, il fait beau aujourd'hui" },
+  digits: { label:'数字', text:'0123456789' },
+  symbols: { label:'符号', text:'!@#$%^&*()_+-=[]{}' },
 };
 
 /* ---- shared canvas renderer: used for list mini-cards AND the read-only detail view ---- */
@@ -2151,10 +2207,10 @@ function fontCanvasHtml(f, mini){
   const fontSize = f.font_size || 48;
   let html = `<div class="font-card-main" style="font-family:'${family}',sans-serif; font-size:${fontSize}px; letter-spacing:${f.letter_spacing||0}px;">${esc(f.display_text||f.name)}</div>`;
   if(!mini){
-    html += `<div class="font-card-digits" style="font-family:'${family}',sans-serif;">0123456789</div>`;
     (f.languages||[]).forEach(key=>{
       const s = LANG_SAMPLES[key]; if(!s) return;
-      html += `<div class="font-lang-block" style="font-family:'${family}',sans-serif;"><div class="lbl">${esc(s.label)}</div>${esc(s.text)}</div>`;
+      const cls = (key==='digits'||key==='symbols') ? ' font-card-digits' : '';
+      html += `<div class="font-lang-block${cls}" style="font-family:'${family}',sans-serif;"><div class="lbl">${esc(s.label)}</div>${esc(s.text)}</div>`;
     });
     (f.custom_blocks||[]).forEach(b=>{
       if(b && b.text && String(b.text).trim()) html += `<div class="font-lang-block" style="font-family:'${family}',sans-serif;"><div class="lbl">${esc(b.label||'自定义')}</div>${esc(b.text)}</div>`;
@@ -2277,7 +2333,7 @@ function openFontEditor(existing){
     align: existing.text_align || 'center',
   } : {
     name:'', url:'', text:'杂货铺 Aa', category: FONT_CATEGORIES[0],
-    langs:{zh:false,ja:false,ko:false,en:false,fr:false}, customBlocks:[],
+    langs: Object.fromEntries(Object.keys(LANG_SAMPLES).map(k=>[k,false])), customBlocks:[],
     bg:'#FFFFFF', bgImage:'', fontSize:32, spacing:0, css:'', align:'center',
   };
   $('fontEditorTitle').textContent = existing ? '编辑字体' : '添加字体';
@@ -2337,15 +2393,13 @@ function renderFontEditorPreview(){
   $('fontCardMain').style.fontSize = fontEditorState.fontSize+'px';
   $('fontCardMain').style.letterSpacing = fontEditorState.spacing+'px';
   $('fontCardMain').textContent = fontEditorState.text || fontEditorState.name || '预览文字';
-  $('fontCardDigits').style.fontFamily = `'${family}', sans-serif`;
-  $('fontCardDigits').style.display = 'block';
-  $('fontCardDigits').textContent = '0123456789';
 
   const blocks = [];
   Object.keys(LANG_SAMPLES).forEach(key=>{
     if(fontEditorState.langs[key]){
       const s = LANG_SAMPLES[key];
-      blocks.push(`<div class="font-lang-block" style="font-family:'${family}', sans-serif;"><div class="lbl">${esc(s.label)}</div>${esc(s.text)}</div>`);
+      const cls = (key==='digits'||key==='symbols') ? ' font-card-digits' : '';
+      blocks.push(`<div class="font-lang-block${cls}" style="font-family:'${family}', sans-serif;"><div class="lbl">${esc(s.label)}</div>${esc(s.text)}</div>`);
     }
   });
   fontEditorState.customBlocks.forEach(b=>{
