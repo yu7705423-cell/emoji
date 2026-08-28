@@ -114,12 +114,10 @@
   .dot.outline{background:transparent; border:1.3px solid var(--text-faint);}
   .spin{width:12px; height:12px; border-radius:50%; border:1.4px solid var(--border); border-top-color:var(--ink); animation:spin .7s linear infinite;}
   @keyframes spin{to{transform:rotate(360deg);}}
-  .row-del{flex-shrink:0; padding-top:6px; background:none; border:none; cursor:pointer; color:var(--text-faint);}
+  .row-del{flex-shrink:0; padding-top:12px; background:none; border:none; cursor:pointer; color:var(--text-faint);}
   .row-del svg{width:14px; height:14px;}
-  .row-controls{flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:14px; padding-top:2px;}
-  .row-drag{background:none; border:none; padding:2px; cursor:grab; color:var(--text-faint); display:flex; touch-action:none;}
-  .row-drag svg{width:17px; height:17px;}
-  .row-controls .row-del{padding-top:0;}
+  .row-drag{flex-shrink:0; background:none; border:none; padding:8px 2px; margin-top:2px; cursor:grab; color:var(--text-faint); display:flex; touch-action:none; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none;}
+  .row-drag svg{width:17px; height:17px; pointer-events:none;}
   .row-item.dragging{opacity:.45; background:var(--bg-elev);}
   .row-item.batch-selectable{cursor:pointer;}
   .row-item.batch-selectable input{pointer-events:none;}
@@ -578,8 +576,6 @@
       <input type="range" id="fontSizeSlider" min="12" max="96" value="32" style="width:100%;">
       <div class="field-label">字间距：<span id="fontSpacingLabel">0</span>px</div>
       <input type="range" id="fontSpacingSlider" min="-4" max="20" value="0" style="width:100%;">
-      <div class="field-label">自定义 CSS（进阶）</div>
-      <textarea class="field-input" id="fontCustomCssInput" style="min-height:64px;" placeholder="可选，保存后所有人查看这张卡片时都会生效"></textarea>
 
       <div class="btn-row" style="margin-top:20px;"><button class="btn-solid" id="fontEditorSubmitBtn">发布</button></div>
     </div>
@@ -802,7 +798,7 @@ let fonts = [];
 /* ===================== auth / boot ===================== */
 const AUTH_EMAIL_SUFFIX = '@zahuopu.invalid';
 function usernameToEmail(u){ return u.trim().toLowerCase()+AUTH_EMAIL_SUFFIX; }
-function showJoinError(msg){ const el=$('joinError'); el.textContent=msg; el.style.display='block'; }
+function showJoinError(msg){ const el=$('joinError'); el.textContent=msg; el.style.display='block'; showToast(msg); }
 
 async function initAuth(){
   try{
@@ -1929,16 +1925,15 @@ function endRowDrag(){
 function renderItemsList(wrap){
   if(!wrap) return;
   wrap.innerHTML = pubItems.map((it,i)=>{
+    const leading = batchMode ? '' : `<button class="row-drag" data-draghandle="${it.id}" title="长按拖动排序"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></button>`;
     const trailing = batchMode
       ? `<div class="sel-check-inline ${batchSelected.has(it.id)?'on':''}">${batchSelected.has(it.id)?'<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>':''}</div>`
-      : `<div class="row-controls">
-          <button class="row-drag" data-draghandle="${it.id}" title="长按拖动排序"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></button>
-          <button class="row-del" data-del="${it.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg></button>
-        </div>`;
+      : `<button class="row-del" data-del="${it.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg></button>`;
     const sourceRow = (it.sourceOpen || it.source)
       ? `<input class="source-input" data-f="source" value="${esc(it.source||'')}" placeholder="来源（可选，留空则用整个作品的统一来源）">`
       : `<button class="row-source-toggle" data-sourcetoggle="${it.id}">＋ 单独填这条的来源</button>`;
     return `<div class="row-item" data-id="${it.id}">
+      ${leading}
       ${thumbHtml(it.url)}
       <div class="row-main">
         <input class="desc" data-f="desc" value="${esc(it.desc)}" placeholder="描述，例如：真的服了" ${batchMode?'readonly':''}>
@@ -2567,12 +2562,12 @@ function openFontEditor(existing){
     source: existing.source || '',
     langs: Object.fromEntries(Object.keys(LANG_SAMPLES).map(k=>[k, (existing.languages||[]).includes(k)])),
     customBlocks: JSON.parse(JSON.stringify(existing.custom_blocks||[])),
-    bg: existing.bg_color || '#FFFFFF', bgImage: existing.bg_image||'', fontSize: existing.font_size||48, spacing: existing.letter_spacing||0, css: existing.custom_css||'',
+    bg: existing.bg_color || '#FFFFFF', bgImage: existing.bg_image||'', fontSize: existing.font_size||48, spacing: existing.letter_spacing||0,
     align: existing.text_align || 'center',
   } : {
     name:'', url:'', text:'杂货铺 Aa', category: FONT_CATEGORIES[0], source:'',
     langs: Object.fromEntries(Object.keys(LANG_SAMPLES).map(k=>[k,false])), customBlocks:[],
-    bg:'#FFFFFF', bgImage:'', fontSize:32, spacing:0, css:'', align:'center',
+    bg:'#FFFFFF', bgImage:'', fontSize:32, spacing:0, align:'center',
   };
   $('fontEditorTitle').textContent = existing ? '编辑字体' : '添加字体';
   $('fontNameInput').value = fontEditorState.name;
@@ -2583,7 +2578,6 @@ function openFontEditor(existing){
   $('fontSpacingSlider').value = fontEditorState.spacing; $('fontSpacingLabel').textContent = fontEditorState.spacing;
   $('fontBgColorPicker').value = /^#/.test(fontEditorState.bg) ? fontEditorState.bg : '#ffffff';
   $('fontBgImageInput').value = fontEditorState.bgImage;
-  $('fontCustomCssInput').value = fontEditorState.css;
   $('fontEditorSubmitBtn').textContent = existing ? '保存修改' : '发布';
   renderFontEditorCatChips();
   renderFontEditorLangChips();
@@ -2645,10 +2639,6 @@ function renderFontEditorPreview(){
     if(b.text && b.text.trim()) blocks.push(`<div class="font-lang-block" style="font-family:'${family}', sans-serif;"><div class="lbl">${esc(b.label||'自定义')}</div>${esc(b.text)}</div>`);
   });
   $('fontCardLangBlocks').innerHTML = blocks.join('');
-
-  let styleTag = document.getElementById('fontCustomStyleTag');
-  if(!styleTag){ styleTag = document.createElement('style'); styleTag.id='fontCustomStyleTag'; document.head.appendChild(styleTag); }
-  styleTag.textContent = fontEditorState.css || '';
 }
 function renderFontEditorCatChips(){
   const wrap = $('fontCatChips'); wrap.innerHTML='';
@@ -2737,7 +2727,6 @@ $('fontBgColorPicker').addEventListener('input', e=>{ fontEditorState.bg=e.targe
 $('fontBgImageInput').addEventListener('input', e=>{ fontEditorState.bgImage=e.target.value.trim(); renderFontEditorPreview(); });
 $('fontSizeSlider').addEventListener('input', e=>{ fontEditorState.fontSize=+e.target.value; $('fontSizeLabel').textContent=fontEditorState.fontSize; renderFontEditorPreview(); });
 $('fontSpacingSlider').addEventListener('input', e=>{ fontEditorState.spacing=+e.target.value; $('fontSpacingLabel').textContent=fontEditorState.spacing; renderFontEditorPreview(); });
-$('fontCustomCssInput').addEventListener('input', e=>{ fontEditorState.css=e.target.value; renderFontEditorPreview(); });
 
 $('fontEditorSubmitBtn').addEventListener('click', async ()=>{
   const name = $('fontNameInput').value.trim();
@@ -2755,7 +2744,6 @@ $('fontEditorSubmitBtn').addEventListener('click', async ()=>{
     bg_image: fontEditorState.bgImage || null,
     font_size: fontEditorState.fontSize,
     letter_spacing: fontEditorState.spacing,
-    custom_css: fontEditorState.css || null,
     text_align: fontEditorState.align || 'center',
   };
   $('fontEditorSubmitBtn').disabled = true;
