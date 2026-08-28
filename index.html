@@ -903,6 +903,7 @@ async function loadCollections(){
   if(error){ showToast('加载作品失败：'+error.message); return; }
   const ids = (cols||[]).map(c=>c.id);
   let byCollection = {};
+  let sourceById = {};
   if(ids.length){
     const { data: emojis, error: eErr } = await sb.from('emojis')
       .select('id, collection_id, description, sort_order, source, image_assets(source_url)')
@@ -912,6 +913,11 @@ async function loadCollections(){
     (emojis||[]).forEach(e=>{
       (byCollection[e.collection_id] ||= []).push({ id:e.id, url:(e.image_assets&&e.image_assets.source_url)||'', desc:e.description, source:e.source||'' });
     });
+
+    // collections_with_stats 视图大概率没把 source 带出来，这里单独兜底查一次基础表
+    const { data: srcRows, error: srcErr } = await sb.from('collections').select('id, source').in('id', ids);
+    if(srcErr){ console.warn('兜底查询来源失败：', srcErr.message); }
+    (srcRows||[]).forEach(r=>{ sourceById[r.id] = r.source; });
   }
   collections = (cols||[]).map(c=>({
     id: c.id,
@@ -920,12 +926,13 @@ async function loadCollections(){
     authorId: c.user_id,
     authorAvatarUrl: c.author_avatar_url || null,
     category: c.category,
-    source: c.source || '',
+    source: (sourceById[c.id] ?? c.source) || '',
     likeCount: c.like_count,
     emojis: byCollection[c.id] || [],
     createdAt: new Date(c.created_at).getTime(),
   }));
 }
+
 async function loadMyLikesFavorites(){
   const { data: likeRows } = await sb.from('likes').select('collection_id, font_id').eq('user_id', currentUserId);
   liked = new Set((likeRows||[]).flatMap(r=>[r.collection_id, r.font_id].filter(Boolean)));
@@ -1852,7 +1859,8 @@ function openDownloadSheet(c){
       $('dlCopyBtn').addEventListener('click', async ()=>{
         try{ await navigator.clipboard.writeText(currentText()); showToast('已复制'); }catch(e){ showToast('复制失败'); }
       });
-      $('dlTxtBtn').addEventListener('click', ()=> downloadBlob(new Blob([currentText()],{type:'text/plain;charset=utf-8'}), `${c.title}_${c.author}.txt`));
+      $('dlTxtBtn').addEventListener('click', ()=> downloadBlob(new Blob(['\ufeff'+currentText()],{type:'text/plain;charset=utf-8'}), `${c.title}_${c.author}.txt`));
+
       $('dlDocxBtn').addEventListener('click', async ()=>{
         try{ downloadBlob(await buildDocxBlob(currentText()), `${c.title}_${c.author}.docx`); }
         catch(e){ showToast('生成 docx 失败'); }
