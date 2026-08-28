@@ -116,11 +116,13 @@
   @keyframes spin{to{transform:rotate(360deg);}}
   .row-del{flex-shrink:0; padding-top:6px; background:none; border:none; cursor:pointer; color:var(--text-faint);}
   .row-del svg{width:14px; height:14px;}
-  .row-controls{flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:3px; padding-top:2px;}
-  .row-move{background:none; border:none; padding:1px; cursor:pointer; color:var(--text-faint); display:flex;}
-  .row-move svg{width:12px; height:12px;}
-  .row-move:disabled{opacity:.25; cursor:default;}
-  .row-controls .row-del{padding-top:2px;}
+  .row-controls{flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:14px; padding-top:2px;}
+  .row-drag{background:none; border:none; padding:2px; cursor:grab; color:var(--text-faint); display:flex; touch-action:none;}
+  .row-drag svg{width:17px; height:17px;}
+  .row-controls .row-del{padding-top:0;}
+  .row-item.dragging{opacity:.45; background:var(--bg-elev);}
+  .row-item.batch-selectable{cursor:pointer;}
+  .row-item.batch-selectable input{pointer-events:none;}
   .sel-check-inline{flex-shrink:0; width:18px; height:18px; border-radius:4px; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; margin-top:11px; cursor:pointer;}
   .sel-check-inline.on{background:var(--ink); border-color:var(--ink);}
   .sel-check-inline svg{width:11px; height:11px;}
@@ -209,6 +211,7 @@
   .type-toggle button.active{background:var(--ink); color:var(--ink-contrast);}
   .toggle-search-row{display:flex; align-items:center; gap:10px; margin-top:14px;}
   .toggle-search-row .type-toggle{flex:1;}
+  #homeRefreshBtn.spinning svg{animation:spin .7s linear infinite;}
 
   /* P1: home profile banner */
   .profile-banner{display:flex; align-items:center; justify-content:space-between; gap:14px; padding-bottom:16px;}
@@ -216,6 +219,8 @@
   .profile-name{font-size:25px; font-weight:800; color:var(--ink); letter-spacing:-.01em; line-height:1.15;}
   .profile-status{border:none; background:transparent; outline:none; font-size:13px; color:var(--text-faint); padding:5px 0 0; width:100%;}
   .avatar-btn{width:60px; height:60px; border-radius:50%; overflow:hidden; border:1px solid var(--border-soft); background:var(--bg-elev); flex-shrink:0; display:flex; align-items:center; justify-content:center; padding:0; cursor:pointer;}
+  #cropViewport{width:260px; height:260px; border-radius:50%; overflow:hidden; position:relative; border:1px solid var(--border); background:var(--bg-elev); touch-action:none; cursor:grab;}
+  #cropViewport img{position:absolute; top:0; left:0; user-select:none; -webkit-user-drag:none; pointer-events:none;}
   .avatar-btn img{width:100%; height:100%; object-fit:cover; display:block;}
   .avatar-btn .ph{color:var(--text-faint); font-size:20px; font-weight:300;}
 
@@ -362,6 +367,7 @@
           <button class="active" data-type="collections">表情包</button>
           <button data-type="fonts">字体</button>
         </div>
+        <button class="icon-btn" id="homeRefreshBtn" aria-label="刷新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v6h-6"/></svg></button>
         <button class="icon-btn" id="homeSearchBtn" aria-label="搜索"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></button>
       </div>
       <div id="homeSearchWrap" style="display:none; margin-top:10px;">
@@ -730,6 +736,21 @@
 
   <input type="file" id="avatarFileInput" accept="image/*" style="display:none;">
 
+  <!-- avatar crop sheet -->
+  <div class="sheet-mask" id="avatarCropMask">
+    <div class="sheet-box">
+      <div class="sheet-head"><span class="t">裁剪头像</span><button class="icon-btn" id="cropCloseBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+      <div class="sheet-scroll" style="display:flex; flex-direction:column; align-items:center;">
+        <div id="cropViewport">
+          <img id="cropImg" alt="">
+        </div>
+        <input type="range" id="cropZoomSlider" min="100" max="300" value="100" style="width:260px; margin-top:18px;">
+        <p class="hint" style="text-align:center; margin-top:8px;">拖动图片调整位置，滑杆缩放</p>
+      </div>
+      <div class="sheet-footer"><button class="btn-solid" id="cropConfirmBtn">确认裁剪</button></div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 </div>
 
@@ -920,7 +941,48 @@ async function loadAppData(){
   renderProfileBits();
   renderAll();
   handleDeepLink();
+  startAutoRefresh();
 }
+
+/* ===================== background auto-refresh + manual refresh ===================== */
+let autoRefreshTimer = null;
+let refreshInFlight = false;
+function isBusyForRefresh(){
+  if(currentPageId === 'publish') return true;
+  const overlayIds = ['detailOverlay','fontDetailOverlay','fontEditorOverlay','aiOverlay','settingsOverlay'];
+  if(overlayIds.some(id => { const el=$(id); return el && el.classList.contains('open'); })) return true;
+  const sheetIds = ['dlSheetMask','pubSheetMask','confirmSheetMask','shareSheetMask','reportSheetMask','profileSheetMask','avatarCropMask'];
+  if(sheetIds.some(id => { const el=$(id); return el && el.classList.contains('open'); })) return true;
+  return false;
+}
+async function silentRefresh(force){
+  if(refreshInFlight) return;
+  if(!force && isBusyForRefresh()) return; // don't disturb an in-progress draft or open panel; retried next tick
+  refreshInFlight = true;
+  const scroller = document.querySelector('.page-scroll');
+  const scrollPos = scroller ? scroller.scrollTop : 0;
+  await Promise.all([loadCollections(), loadMyLikesFavorites(), loadFonts()]);
+  renderProfileBits();
+  renderAll();
+  if(scroller) scroller.scrollTop = scrollPos;
+  refreshInFlight = false;
+}
+function startAutoRefresh(){
+  if(autoRefreshTimer) clearInterval(autoRefreshTimer);
+  autoRefreshTimer = setInterval(()=>{
+    if(document.visibilityState === 'visible' && currentUserId) silentRefresh();
+  }, 45000);
+}
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState === 'visible' && currentUserId) silentRefresh();
+});
+$('homeRefreshBtn').addEventListener('click', async ()=>{
+  if(refreshInFlight) return;
+  $('homeRefreshBtn').classList.add('spinning');
+  await silentRefresh(true);
+  $('homeRefreshBtn').classList.remove('spinning');
+  showToast('已刷新');
+});
 
 /* ===================== remote mutations ===================== */
 async function createCollectionRemote(title, category, items, source){
@@ -1153,13 +1215,18 @@ $('catSearchBtn').addEventListener('click', ()=>{
 });
 
 /* ===================== profile: nickname / status / avatar ===================== */
+function getMyHdAvatar(){
+  if(!currentUserId) return null;
+  try{ return localStorage.getItem('zhp_avatar_hd_'+currentUserId); }catch(e){ return null; }
+}
 function renderProfileBits(){
   $('homeNickname').textContent = currentUser;
   if(document.activeElement !== $('homeStatusInput')) $('homeStatusInput').value = statusMessage;
   $('myProfileName').textContent = currentUser;
   $('myProfileStatus').textContent = statusMessage || '还没有个性签名';
+  const displayAvatar = getMyHdAvatar() || avatarDataUrl;
   [ ['homeAvatarImg','homeAvatarPh'], ['myAvatarImg','myAvatarPh'] ].forEach(([imgId,phId])=>{
-    if(avatarDataUrl){ $(imgId).src = avatarDataUrl; $(imgId).style.display='block'; $(phId).style.display='none'; }
+    if(displayAvatar){ $(imgId).src = displayAvatar; $(imgId).style.display='block'; $(phId).style.display='none'; }
     else { $(imgId).style.display='none'; $(phId).style.display='block'; }
   });
   $('statWorks').textContent = collections.filter(c=>c.authorId===currentUserId).length + fonts.filter(f=>f.user_id===currentUserId).length;
@@ -1173,20 +1240,100 @@ $('homeStatusInput').addEventListener('input', e=>{
   statusSaveTimer = setTimeout(()=>{ saveProfileRemote(currentUser, statusMessage, avatarDataUrl); }, 800);
 });
 let statusSaveTimer;
-let avatarTarget = null;
-$('homeAvatarBtn').addEventListener('click', ()=>{ avatarTarget='home'; $('avatarFileInput').click(); });
-$('myAvatarBtn').addEventListener('click', ()=>{ avatarTarget='my'; $('avatarFileInput').click(); });
-$('avatarFileInput').addEventListener('change', async e=>{
+$('homeAvatarBtn').addEventListener('click', ()=>{ $('avatarFileInput').click(); });
+$('myAvatarBtn').addEventListener('click', ()=>{ $('avatarFileInput').click(); });
+$('avatarFileInput').addEventListener('change', e=>{
   const file = e.target.files[0]; if(!file) return;
+  openAvatarCrop(file);
+  e.target.value='';
+});
+
+/* ===================== avatar crop: drag to position, slider to zoom ===================== */
+const CROP_VIEWPORT = 260;
+let cropTargetImage = null;
+let cropState = { scale:1, minScale:1, offsetX:0, offsetY:0 };
+
+function openAvatarCrop(file){
   const reader = new FileReader();
-  reader.onload = async ()=>{
-    avatarDataUrl = reader.result;
-    renderProfileBits();
-    const ok = await saveProfileRemote(currentUser, statusMessage, avatarDataUrl);
-    showToast(ok ? '头像已更新' : '头像已更新（同步失败，刷新会丢失）');
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      cropTargetImage = img;
+      const minScale = Math.max(CROP_VIEWPORT/img.width, CROP_VIEWPORT/img.height);
+      cropState = { scale:minScale, minScale, offsetX:0, offsetY:0 };
+      $('cropZoomSlider').value = 100;
+      renderCropView();
+      $('avatarCropMask').classList.add('open');
+    };
+    img.src = reader.result;
   };
   reader.readAsDataURL(file);
-  e.target.value='';
+}
+function renderCropView(){
+  const el = $('cropImg');
+  const w = cropTargetImage.width * cropState.scale;
+  const h = cropTargetImage.height * cropState.scale;
+  const maxOffsetX = Math.max(0, (w - CROP_VIEWPORT)/2);
+  const maxOffsetY = Math.max(0, (h - CROP_VIEWPORT)/2);
+  cropState.offsetX = Math.max(-maxOffsetX, Math.min(maxOffsetX, cropState.offsetX));
+  cropState.offsetY = Math.max(-maxOffsetY, Math.min(maxOffsetY, cropState.offsetY));
+  el.src = cropTargetImage.src;
+  el.style.width = w+'px';
+  el.style.height = h+'px';
+  el.style.left = (CROP_VIEWPORT/2 - w/2 + cropState.offsetX) + 'px';
+  el.style.top = (CROP_VIEWPORT/2 - h/2 + cropState.offsetY) + 'px';
+}
+(function(){
+  const vp = $('cropViewport');
+  let dragging=false, startX=0, startY=0, startOffX=0, startOffY=0;
+  vp.addEventListener('pointerdown', e=>{
+    if(!cropTargetImage) return;
+    dragging=true; startX=e.clientX; startY=e.clientY;
+    startOffX=cropState.offsetX; startOffY=cropState.offsetY;
+    vp.setPointerCapture(e.pointerId);
+  });
+  vp.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    cropState.offsetX = startOffX + (e.clientX-startX);
+    cropState.offsetY = startOffY + (e.clientY-startY);
+    renderCropView();
+  });
+  vp.addEventListener('pointerup', ()=>{ dragging=false; });
+  vp.addEventListener('pointercancel', ()=>{ dragging=false; });
+})();
+$('cropZoomSlider').addEventListener('input', e=>{
+  if(!cropTargetImage) return;
+  cropState.scale = cropState.minScale * (+e.target.value/100);
+  renderCropView();
+});
+$('cropCloseBtn').addEventListener('click', ()=>{ $('avatarCropMask').classList.remove('open'); cropTargetImage=null; });
+$('cropConfirmBtn').addEventListener('click', async ()=>{
+  if(!cropTargetImage) return;
+  const img = cropTargetImage;
+  const w = img.width*cropState.scale, h = img.height*cropState.scale;
+  const viewLeft = CROP_VIEWPORT/2 - w/2 + cropState.offsetX;
+  const viewTop = CROP_VIEWPORT/2 - h/2 + cropState.offsetY;
+  const srcX = -viewLeft / cropState.scale;
+  const srcY = -viewTop / cropState.scale;
+  const srcSize = CROP_VIEWPORT / cropState.scale;
+  function toDataUrl(outSize, quality){
+    const canvas = document.createElement('canvas');
+    canvas.width = outSize; canvas.height = outSize;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, srcX, srcY, srcSize, srcSize, 0, 0, outSize, outSize);
+    return canvas.toDataURL('image/jpeg', quality);
+  }
+  const hdDataUrl = toDataUrl(512, 0.88);      // stays only in this browser, never synced
+  const smallDataUrl = toDataUrl(220, 0.72);   // small compressed copy, synced to everyone
+
+  if(currentUserId){ try{ localStorage.setItem('zhp_avatar_hd_'+currentUserId, hdDataUrl); }catch(e){} }
+  avatarDataUrl = smallDataUrl;
+  renderProfileBits();
+  $('avatarCropMask').classList.remove('open');
+  cropTargetImage = null;
+  const ok = await saveProfileRemote(currentUser, statusMessage, avatarDataUrl);
+  if(ok){ await loadCollections(); await loadFonts(); renderAll(); }
+  showToast(ok ? '头像已更新' : '头像已更新（同步失败，刷新会丢失）');
 });
 
 /* ===================== edit profile sheet ===================== */
@@ -1366,7 +1513,7 @@ function renderItemsGrid(container, items, emptyText, action){
 /* ===================== P3: long-press peek preview ===================== */
 function showPeek(id){
   const c = collections.find(x=>x.id===id); if(!c) return;
-  const avatarSrc = (c.authorId===currentUserId && avatarDataUrl) ? avatarDataUrl : c.authorAvatarUrl;
+  const avatarSrc = (c.authorId===currentUserId) ? (getMyHdAvatar() || avatarDataUrl) : c.authorAvatarUrl;
   $('peekCard').innerHTML = `
     <div>${coverHtml(c.emojis, true)}</div>
     <div class="peek-body">
@@ -1735,22 +1882,57 @@ let pubItems = [{id:uid(), url:'', desc:'', status:'idle', source:''}];
 let batchMode = false;
 let batchSelected = new Set();
 
-function moveItem(id, dir){
-  const idx = pubItems.findIndex(x=>x.id===id);
-  const swapIdx = idx + dir;
-  if(idx<0 || swapIdx<0 || swapIdx>=pubItems.length) return;
-  [pubItems[idx], pubItems[swapIdx]] = [pubItems[swapIdx], pubItems[idx]];
-  renderPubItems();
+let dragItemId = null;
+let dragLongPressTimer = null;
+let dragActive = false;
+function startRowDrag(itemId){
+  dragItemId = itemId;
+  dragActive = false;
+  clearTimeout(dragLongPressTimer);
+  dragLongPressTimer = setTimeout(()=>{
+    dragActive = true;
+    const row = document.querySelector(`.row-item[data-id="${itemId}"]`);
+    if(row) row.classList.add('dragging');
+    if(navigator.vibrate) navigator.vibrate(10);
+  }, 350);
+  document.addEventListener('pointermove', onRowDragMove);
+  document.addEventListener('pointerup', endRowDrag, {once:true});
+  document.addEventListener('pointercancel', endRowDrag, {once:true});
+}
+function onRowDragMove(e){
+  if(!dragActive || !dragItemId) return;
+  let targetRow = null;
+  document.querySelectorAll('.row-item').forEach(r=>{
+    const rect = r.getBoundingClientRect();
+    if(rect.width && e.clientY >= rect.top && e.clientY <= rect.bottom) targetRow = r;
+  });
+  if(targetRow && targetRow.dataset.id !== dragItemId){
+    const fromIdx = pubItems.findIndex(x=>x.id===dragItemId);
+    const toIdx = pubItems.findIndex(x=>x.id===targetRow.dataset.id);
+    if(fromIdx!==-1 && toIdx!==-1 && fromIdx!==toIdx){
+      const [moved] = pubItems.splice(fromIdx,1);
+      pubItems.splice(toIdx,0,moved);
+      renderPubItems();
+      const row = document.querySelector(`.row-item[data-id="${dragItemId}"]`);
+      if(row) row.classList.add('dragging');
+    }
+  }
+}
+function endRowDrag(){
+  clearTimeout(dragLongPressTimer);
+  document.removeEventListener('pointermove', onRowDragMove);
+  document.querySelectorAll('.row-item.dragging').forEach(r=>r.classList.remove('dragging'));
+  dragItemId = null;
+  dragActive = false;
 }
 
 function renderItemsList(wrap){
   if(!wrap) return;
   wrap.innerHTML = pubItems.map((it,i)=>{
     const trailing = batchMode
-      ? `<div class="sel-check-inline ${batchSelected.has(it.id)?'on':''}" data-batch="${it.id}">${batchSelected.has(it.id)?'<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>':''}</div>`
+      ? `<div class="sel-check-inline ${batchSelected.has(it.id)?'on':''}">${batchSelected.has(it.id)?'<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>':''}</div>`
       : `<div class="row-controls">
-          <button class="row-move" data-move="-1" data-id="${it.id}" ${i===0?'disabled':''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg></button>
-          <button class="row-move" data-move="1" data-id="${it.id}" ${i===pubItems.length-1?'disabled':''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+          <button class="row-drag" data-draghandle="${it.id}" title="长按拖动排序"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></button>
           <button class="row-del" data-del="${it.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg></button>
         </div>`;
     const sourceRow = (it.sourceOpen || it.source)
@@ -1759,9 +1941,9 @@ function renderItemsList(wrap){
     return `<div class="row-item" data-id="${it.id}">
       ${thumbHtml(it.url)}
       <div class="row-main">
-        <input class="desc" data-f="desc" value="${esc(it.desc)}" placeholder="描述，例如：真的服了">
-        <input class="url" data-f="url" value="${esc(it.url)}" placeholder="图片 URL">
-        ${sourceRow}
+        <input class="desc" data-f="desc" value="${esc(it.desc)}" placeholder="描述，例如：真的服了" ${batchMode?'readonly':''}>
+        <input class="url" data-f="url" value="${esc(it.url)}" placeholder="图片 URL" ${batchMode?'readonly':''}>
+        ${batchMode ? '' : sourceRow}
       </div>
       <div class="row-status">${statusDot(it.status)}</div>
       ${trailing}
@@ -1784,16 +1966,17 @@ function renderItemsList(wrap){
     });
   });
   if(batchMode){
-    wrap.querySelectorAll('[data-batch]').forEach(el=>{
-      el.addEventListener('click', ()=>{
-        const id = el.dataset.batch;
+    wrap.querySelectorAll('.row-item').forEach(row=>{
+      row.classList.add('batch-selectable');
+      row.addEventListener('click', ()=>{
+        const id = row.dataset.id;
         batchSelected.has(id) ? batchSelected.delete(id) : batchSelected.add(id);
         renderPubItems();
       });
     });
   } else {
-    wrap.querySelectorAll('[data-move]').forEach(btn=>{
-      btn.addEventListener('click', ()=> moveItem(btn.dataset.id, +btn.dataset.move));
+    wrap.querySelectorAll('[data-draghandle]').forEach(handle=>{
+      handle.addEventListener('pointerdown', e=>{ e.preventDefault(); startRowDrag(handle.dataset.draghandle); });
     });
     wrap.querySelectorAll('[data-del]').forEach(btn=>{
       btn.addEventListener('click', ()=>{
