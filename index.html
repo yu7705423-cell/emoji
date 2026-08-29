@@ -758,6 +758,16 @@
 </div>
 
 <script>
+/* v29 相对 v28 的改动（全部集中在前端，数据库那边另有一份 SQL 要跑）：
+   安全   字体卡片的 bg_color / font_size / letter_spacing 渲染前做了收口，
+          languages / custom_blocks 不是数组时不再让整个首页崩掉
+   崩溃   开头的 localStorage 加了 try/catch，无痕模式不会再卡在启动转圈
+   数据   发布中途失败会清掉已建的空合集；图片资源改成按 URL 配对不再依赖返回顺序；
+          编辑失败的回滚不再带着 id 插回去
+   交互   改对链接后缩略图会恢复；字体点赞数不再因为后台刷新而卡住；
+          发布完不会再莫名弹出详情页；AI 逐条生成不再打断正在输入的描述
+   新增   系统返回键改成关闭最上层弹层（脚本末尾一整段，不想要可以整段删掉） */
+
 /* ===================== constants ===================== */
 const WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const CATEGORIES = ["抽象","可爱","韩系","猫猫","情侣","发疯","搞笑","日常"];
@@ -774,12 +784,17 @@ const FORMATS = [
 const $ = id => document.getElementById(id);
 
 /* ===================== first-launch disclaimer gate ===================== */
+// 这段是整个 <script> 里最早跑的一块。localStorage 在无痕模式、
+// 禁用 Cookie 的 WebView 里光是访问就会抛 SecurityError，
+// 一抛下面所有代码（包括 initAuth）全都不执行，用户看到的是永远转不完的圈。
 (function(){
   const KEY = 'zhp_disclaimer_ack_v1';
   const overlay = document.getElementById('disclaimerOverlay');
-  if(localStorage.getItem(KEY) === '1'){ overlay.style.display = 'none'; }
+  try{
+    if(localStorage.getItem(KEY) === '1'){ overlay.style.display = 'none'; }
+  }catch(e){ /* 存不了就每次都提示一遍，总比整个页面打不开强 */ }
   document.getElementById('disclaimerAckBtn').addEventListener('click', ()=>{
-    localStorage.setItem(KEY, '1');
+    try{ localStorage.setItem(KEY, '1'); }catch(e){}
     overlay.style.display = 'none';
   });
 })();
@@ -802,6 +817,29 @@ function isDarkColor(hex){
   return (0.2126*r + 0.7152*g + 0.0722*b) < 140;
 }
 function hashStr(s){ let h=5381; for(let i=0;i<s.length;i++) h=((h<<5)+h+s.charCodeAt(i))>>>0; return h.toString(36); }
+
+// 下面三个是渲染前的最后一道收口。库里的值是客户端写进去的，
+// 谁都能绕过界面直接调 REST API 写任意内容，所以列类型不能当保证：
+// 数字必须真的是数字，颜色必须真的是颜色，数组必须真的是数组。
+function clampNum(v, min, max, fallback){
+  // 注意 Number(null) 和 Number('') 都是 0，不能只判 isFinite，
+  // 否则列里存的是 NULL 时会被当成 0 然后夹到最小值，而不是用默认值
+  if(typeof v !== 'number' && typeof v !== 'string') return fallback;
+  if(typeof v === 'string' && !v.trim()) return fallback;
+  const n = Number(v);
+  if(!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+// esc() 只挡 HTML，挡不住 CSS：分号和括号原样保留，
+// 一个 "#fff;position:fixed;inset:0;z-index:99999" 就能让一张卡片盖满别人的屏幕
+function safeCssColor(v, fallback){
+  const s = String(v==null?'':v).trim();
+  return /^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(s) ? s : fallback;
+}
+// jsonb 列里塞个 {} 就能让 .forEach 抛错，一抛 renderAll 整个挂掉，所有人首页空白
+function asArray(v){ return Array.isArray(v) ? v : []; }
+// 搜索时任何一个 null 字段调 .toLowerCase() 都会抛错，整页搜索直接瘫
+function low(v){ return String(v==null?'':v).toLowerCase(); }
 
 /* ===================== supabase client ===================== */
 const SUPABASE_URL = 'https://mejkhrxqdlybfatzecsc.supabase.co';
@@ -857,6 +895,9 @@ async function initAuth(){
     applyProfile(profile);
     $('joinOverlay').classList.remove('open');
     await loadAppData();
+    // 只在启动时认一次 ?collection= / ?font=。
+    // 之前放在 loadAppData 里，发布完重新加载数据时又会弹一次详情页。
+    handleDeepLink();
     $('loadingOverlay').style.display = 'none';
   }catch(err){
     $('loadingOverlay').innerHTML = `<p class="hint" style="text-align:center; padding:0 24px;">连接失败：${esc(err.message||String(err))}<br>请检查网络后刷新重试。</p>`;
@@ -1016,7 +1057,6 @@ async function loadAppData(){
   await Promise.all([loadCollections(), loadMyLikesFavorites(), loadFonts()]);
   renderProfileBits();
   renderAll();
-  handleDeepLink();
   startAutoRefresh();
 }
 
@@ -1029,6 +1069,9 @@ function isBusyForRefresh(){
   if(overlayIds.some(id => { const el=$(id); return el && el.classList.contains('open'); })) return true;
   const sheetIds = ['dlSheetMask','pubSheetMask','confirmSheetMask','shareSheetMask','reportSheetMask','profileSheetMask','avatarCropMask'];
   if(sheetIds.some(id => { const el=$(id); return el && el.classList.contains('open'); })) return true;
+  // 这两个用的是 .show 不是 .open，之前漏掉了，长按预览/字体大图开着时照样会被刷新打断
+  const showIds = ['peekMask','fontLightboxMask'];
+  if(showIds.some(id => { const el=$(id); return el && el.classList.contains('show'); })) return true;
   return false;
 }
 async function silentRefresh(force){
@@ -1072,16 +1115,45 @@ $('homeRefreshBtn').addEventListener('click', async ()=>{
 });
 
 /* ===================== remote mutations ===================== */
+// PostgREST 批量插入后 .select() 的返回顺序在 SQL 层面没有任何保证，
+// 之前直接用 assets[i] 配 items[i]，一旦顺序不一致，描述就会整体挂到错的图上，
+// 而且完全不报错。改成按 source_url 配对，重复链接用队列依次取。
+function mapAssetsToItems(items, assets){
+  const pool = new Map();
+  for(const a of (assets||[])){
+    const k = String(a.source_url==null?'':a.source_url);
+    if(!pool.has(k)) pool.set(k, []);
+    pool.get(k).push(a.id);
+  }
+  const ids = [];
+  for(const it of items){
+    const q = pool.get(it.url.trim());
+    if(!q || !q.length) return null;
+    ids.push(q.shift());
+  }
+  return ids;
+}
 async function createCollectionRemote(title, category, items, source){
   const { data: coll, error: cErr } = await sb.from('collections').insert({ title, category, source: source||null, user_id: currentUserId }).select().single();
   if(cErr){ showToast('发布失败：'+cErr.message); return false; }
+  // 合集行已经落库了，后面任何一步失败都必须把它清掉，
+  // 否则首页会留下一个 0 个表情的空合集，所有人都看得见
+  const rollback = async (assetIds)=>{
+    await sb.from('collections').delete().eq('id', coll.id);
+    if(assetIds && assetIds.length) await sb.from('image_assets').delete().in('id', assetIds);
+  };
   const { data: assets, error: aErr } = await sb.from('image_assets')
     .insert(items.map(it=>({ source_type:'external_url', source_url: it.url.trim() }))).select();
-  if(aErr){ showToast('图片保存失败：'+aErr.message); return false; }
-  if(!assets || assets.length !== items.length){ showToast('图片保存数量不对，请重试'); return false; }
-  const emojiRows = items.map((it,i)=>({ collection_id: coll.id, image_asset_id: assets[i].id, description: it.desc.trim()||'未命名', sort_order:i, source: it.source ? it.source.trim() : null }));
+  if(aErr){ await rollback(); showToast('图片保存失败：'+aErr.message); return false; }
+  const assetIds = mapAssetsToItems(items, assets);
+  if(!assetIds){
+    await rollback((assets||[]).map(a=>a.id));
+    showToast('图片保存结果对不上，请重试');
+    return false;
+  }
+  const emojiRows = items.map((it,i)=>({ collection_id: coll.id, image_asset_id: assetIds[i], description: it.desc.trim()||'未命名', sort_order:i, source: it.source ? it.source.trim() : null }));
   const { error: eErr } = await sb.from('emojis').insert(emojiRows);
-  if(eErr){ showToast('保存表情失败：'+eErr.message); return false; }
+  if(eErr){ await rollback(assetIds); showToast('保存表情失败：'+eErr.message); return false; }
   return true;
 }
 // 注意：下面这套是"尽力而为"的补偿式回滚。真正干净的做法是把整段
@@ -1099,8 +1171,13 @@ async function updateCollectionRemote(id, title, category, items, source){
   const { data: assets, error: aErr } = await sb.from('image_assets')
     .insert(items.map(it=>({ source_type:'external_url', source_url: it.url.trim() }))).select();
   if(aErr){ showToast('图片保存失败：'+aErr.message); return false; }
-  if(!assets || assets.length !== items.length){ showToast('图片保存数量不对，请重试'); return false; }
-  const newAssetIds = assets.map(a=>a.id);
+  const newAssetIds = (assets||[]).map(a=>a.id);
+  const pairedIds = mapAssetsToItems(items, assets);
+  if(!pairedIds){
+    if(newAssetIds.length) await sb.from('image_assets').delete().in('id', newAssetIds);
+    showToast('图片保存结果对不上，请重试');
+    return false;
+  }
 
   // 3) 删旧表情
   const { error: dErr } = await sb.from('emojis').delete().eq('collection_id', id);
@@ -1111,13 +1188,22 @@ async function updateCollectionRemote(id, title, category, items, source){
   }
 
   // 4) 插新表情；失败就把旧的塞回去，别让内容凭空消失
-  const emojiRows = items.map((it,i)=>({ collection_id:id, image_asset_id: assets[i].id, description: it.desc.trim()||'未命名', sort_order:i, source: it.source ? it.source.trim() : null }));
+  const emojiRows = items.map((it,i)=>({ collection_id:id, image_asset_id: pairedIds[i], description: it.desc.trim()||'未命名', sort_order:i, source: it.source ? it.source.trim() : null }));
   const { error: eErr } = await sb.from('emojis').insert(emojiRows);
   if(eErr){
     let restored = false;
     if(oldEmojis && oldEmojis.length){
-      const { error: rErr } = await sb.from('emojis').insert(oldEmojis);
+      // 旧行是 select('*') 拿的，带着 id / created_at 这类生成列。
+      // 原样插回去，如果 id 是 identity 列会直接被拒绝，"已还原"永远不会发生。
+      // 表情 id 除了下载弹层里的临时勾选之外没有任何外部引用，丢掉重新生成即可。
+      const restoreRows = oldEmojis.map(row=>{
+        const clean = Object.assign({}, row);
+        delete clean.id; delete clean.created_at; delete clean.updated_at;
+        return clean;
+      });
+      const { error: rErr } = await sb.from('emojis').insert(restoreRows);
       restored = !rErr;
+      if(rErr) console.warn('还原旧表情失败：', rErr.message);
     }
     await sb.from('image_assets').delete().in('id', newAssetIds);
     showToast(restored ? '保存表情失败，已还原成修改前的内容' : '保存表情失败：'+eErr.message);
@@ -1377,13 +1463,13 @@ function renderProfileBits(){
   $('statLikes').textContent = liked.size;
   $('statFavs').textContent = favorited.size;
 }
+let statusSaveTimer;
 $('homeStatusInput').addEventListener('input', e=>{
   statusMessage = e.target.value;
   $('myProfileStatus').textContent = statusMessage || '还没有个性签名';
   clearTimeout(statusSaveTimer);
   statusSaveTimer = setTimeout(()=>{ saveProfileRemote(currentUser, statusMessage, avatarDataUrl); }, 800);
 });
-let statusSaveTimer;
 $('homeAvatarBtn').addEventListener('click', ()=>{ $('avatarFileInput').click(); });
 $('myAvatarBtn').addEventListener('click', ()=>{ $('avatarFileInput').click(); });
 $('avatarFileInput').addEventListener('change', e=>{
@@ -1557,6 +1643,9 @@ function parseLine(raw){
   let desc = line.slice(0, idx);
   let url = line.slice(idx).trim();
   desc = desc.replace(/[\s:：\-—|,，]+$/,'').trim();
+  // 只写了 www. 没写协议的行，会被当成站内相对路径，图必然裂，
+  // 但状态点还显示"正常"。这里直接补上。
+  if(/^www\./i.test(url)) url = 'https://' + url;
   return {desc, url, error: !url};
 }
 
@@ -1579,7 +1668,10 @@ async function readDocxText(file){
 async function buildDocxBlob(text){
   if(typeof JSZip === 'undefined') throw new Error('docx 组件没加载成功，刷新页面再试');
   const lines = text.split('\n');
-  const paras = lines.map(l=>`<w:p><w:r><w:t xml:space="preserve">${esc(l)}</w:t></w:r></w:p>`).join('');
+  // XML 1.0 不允许大部分控制字符。从网页/文档里粘来的文本很容易夹带一个，
+  // 生成的 docx 不会报错，但 Word 打开时会说文件已损坏。
+  const xmlSafe = s => String(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '');
+  const paras = lines.map(l=>`<w:p><w:r><w:t xml:space="preserve">${esc(xmlSafe(l))}</w:t></w:r></w:p>`).join('');
   const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${paras}<w:sectPr/></w:body></w:document>`;
   const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`;
   const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;
@@ -1637,7 +1729,7 @@ function statusDot(status){
 
 /* ===================== collection cards / grids (with long-press peek) ===================== */
 function collCardHtml(c){
-  return `<button class="coll-card" data-id="${c.id}">
+  return `<button class="coll-card" data-id="${esc(c.id)}">
     ${coverHtml(c.emojis)}
     <div class="coll-name">${esc(c.title)}</div>
     <div class="coll-sub">${esc(c.author)} · ${esc(c.category)}</div>
@@ -1645,7 +1737,7 @@ function collCardHtml(c){
   </button>`;
 }
 function fontBrowseCardHtml(f){
-  return `<button class="coll-card" data-font-id="${f.id}">
+  return `<button class="coll-card" data-font-id="${esc(f.id)}">
     ${fontCanvasHtml(f, true)}
     <div class="coll-name">${esc(f.name)}</div>
     <div class="coll-sub">${esc(f.author_nickname)} · ${esc(f.category||'')}</div>
@@ -1722,11 +1814,11 @@ function renderHome(){
   // 否则搜索状态下点切换毫无反应，很困惑
   if(homeMode==='fonts'){
     let list = fonts;
-    if(q) list = list.filter(f => f.name.toLowerCase().includes(q) || (f.category||'').toLowerCase().includes(q) || (f.display_text||'').toLowerCase().includes(q));
+    if(q) list = list.filter(f => low(f.name).includes(q) || low(f.category).includes(q) || low(f.display_text).includes(q));
     items = list.map(f=>({type:'font', data:f, sortKey: homeSort==='hot' ? (f.like_count||0) : new Date(f.created_at).getTime()}));
   } else {
     let list = collections;
-    if(q) list = list.filter(c => c.title.toLowerCase().includes(q) || c.category.toLowerCase().includes(q) || c.emojis.some(e=>e.desc.toLowerCase().includes(q)));
+    if(q) list = list.filter(c => low(c.title).includes(q) || low(c.category).includes(q) || c.emojis.some(e=>low(e.desc).includes(q)));
     items = list.map(c=>({type:'collection', data:c, sortKey: homeSort==='hot' ? c.likeCount : c.createdAt}));
   }
   items.sort((a,b)=>b.sortKey-a.sortKey);
@@ -1770,11 +1862,11 @@ function renderCategory(){
   let items;
   if(catMode==='fonts'){
     let list = activeCategory ? fonts.filter(f=>f.category===activeCategory) : fonts.slice();
-    if(q){ list = list.filter(f=>f.name.toLowerCase().includes(q) || (f.display_text||'').toLowerCase().includes(q)); }
+    if(q){ list = list.filter(f=>low(f.name).includes(q) || low(f.display_text).includes(q)); }
     items = list.map(f=>({type:'font', data:f}));
   } else {
     let list = activeCategory ? collections.filter(c=>c.category===activeCategory) : collections.slice();
-    if(q){ list = list.filter(c=>c.title.toLowerCase().includes(q) || c.emojis.some(e=>e.desc.toLowerCase().includes(q))); }
+    if(q){ list = list.filter(c=>low(c.title).includes(q) || c.emojis.some(e=>low(e.desc).includes(q))); }
     items = list.map(c=>({type:'collection', data:c}));
   }
   renderItemsGrid($('catGrid'), items, activeCategory ? `「${activeCategory}」分类下暂时还没有内容` : '还没有内容');
@@ -1836,7 +1928,17 @@ function openDetail(id){
 }
 $('detailBackBtn').addEventListener('click', ()=>{ $('detailOverlay').classList.remove('open'); });
 function renderDetail(justToggled){
-  const c = collections.find(x=>x.id===openId); if(!c) return;
+  const c = collections.find(x=>x.id===openId);
+  // 作者在别处删了这个合集，后台刷新同步过来之后再渲染就找不到了。
+  // 之前是直接 return，弹层会僵在原地，点什么都没反应。
+  if(!c){
+    if($('detailOverlay').classList.contains('open')){
+      $('detailOverlay').classList.remove('open');
+      showToast('这个作品已经被作者删除了');
+    }
+    openId = null;
+    return;
+  }
   $('detailTitle').textContent = c.title;
   const isLiked = liked.has(c.id), isFav = favorited.has(c.id);
   const isOwner = c.authorId===currentUserId;
@@ -1947,7 +2049,7 @@ function openDownloadSheet(c){
       <div class="sheet-head"><span class="t">已选择 ${selected.size} / ${c.emojis.length}</span><button class="icon-btn" id="dlCloseBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
       <div class="sheet-tools"><button id="selAllBtn">全选</button><button id="selNoneBtn">取消全选</button></div>
       <div class="sel-grid">${c.emojis.map(e=>`
-        <div class="sel-cell" data-id="${e.id}">
+        <div class="sel-cell" data-id="${esc(e.id)}">
           <img src="${esc(e.url)}" ${FADE_ATTR} onerror="this.style.opacity=0">
           <div class="sel-check ${selected.has(e.id)?'on':''}">${selected.has(e.id)?'<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>':''}</div>
         </div>`).join('')}</div>
@@ -2063,6 +2165,12 @@ let dragLongPressTimer = null;
 let dragActive = false;
 // 拖动必须限定在触发的那个列表里：发布页和 AI 弹层渲染的是同一批
 // .row-item[data-id]，用 document 全局查会命中底下那份，反馈全跑偏。
+// 用 dataset 逐个比对，不用属性选择器：id 里只要有引号，选择器就直接抛语法错误
+function findRow(listEl, id){
+  const rows = (listEl || document).querySelectorAll('.row-item[data-id]');
+  for(const r of rows){ if(r.dataset.id === id) return r; }
+  return null;
+}
 function startRowDrag(itemId, listEl){
   dragItemId = itemId;
   dragListEl = listEl || document;
@@ -2070,7 +2178,7 @@ function startRowDrag(itemId, listEl){
   clearTimeout(dragLongPressTimer);
   dragLongPressTimer = setTimeout(()=>{
     dragActive = true;
-    const row = dragListEl.querySelector(`.row-item[data-id="${itemId}"]`);
+    const row = findRow(dragListEl, itemId);
     if(row) row.classList.add('dragging');
     if(navigator.vibrate) navigator.vibrate(10);
   }, 350);
@@ -2092,7 +2200,7 @@ function onRowDragMove(e){
       const [moved] = pubItems.splice(fromIdx,1);
       pubItems.splice(toIdx,0,moved);
       renderPubItems();
-      const row = dragListEl.querySelector(`.row-item[data-id="${dragItemId}"]`);
+      const row = findRow(dragListEl, dragItemId);
       if(row) row.classList.add('dragging');
     }
   }
@@ -2111,14 +2219,14 @@ function endRowDrag(){
 function renderItemsList(wrap){
   if(!wrap) return;
   wrap.innerHTML = pubItems.map((it,i)=>{
-    const leading = batchMode ? '' : `<button class="row-drag" data-draghandle="${it.id}" title="长按拖动排序"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></button>`;
+    const leading = batchMode ? '' : `<button class="row-drag" data-draghandle="${esc(it.id)}" title="长按拖动排序"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></button>`;
     const trailing = batchMode
       ? `<div class="sel-check-inline ${batchSelected.has(it.id)?'on':''}">${batchSelected.has(it.id)?'<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>':''}</div>`
-      : `<button class="row-del" data-del="${it.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg></button>`;
+      : `<button class="row-del" data-del="${esc(it.id)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg></button>`;
     const sourceRow = (it.sourceOpen || it.source)
       ? `<input class="source-input" data-f="source" value="${esc(it.source||'')}" placeholder="来源（可选，留空则用整个作品的统一来源）">`
-      : `<button class="row-source-toggle" data-sourcetoggle="${it.id}">＋ 单独填这条的来源</button>`;
-    return `<div class="row-item" data-id="${it.id}">
+      : `<button class="row-source-toggle" data-sourcetoggle="${esc(it.id)}">＋ 单独填这条的来源</button>`;
+    return `<div class="row-item" data-id="${esc(it.id)}">
       ${leading}
       ${thumbHtml(it.url)}
       <div class="row-main">
@@ -2135,8 +2243,17 @@ function renderItemsList(wrap){
       const id = e.target.closest('.row-item').dataset.id, f = e.target.dataset.f;
       const it = pubItems.find(x=>x.id===id); if(it) it[f]=e.target.value;
       if(f==='url'){
-        const img = e.target.closest('.row-item').querySelector('.thumb img');
-        if(img) img.src = e.target.value;
+        const thumb = e.target.closest('.row-item').querySelector('.thumb');
+        const img = thumb && thumb.querySelector('img');
+        if(img){
+          // 上一次加载失败时 onerror 把 img 写成了 display:none（内联样式）。
+          // 不复原的话，用户把链接改对了也只能一直看着那个破图占位符。
+          img.style.display = '';
+          img.style.opacity = '0';
+          const fb = thumb.querySelector('.thumb-fallback');
+          if(fb) fb.style.display = 'none';
+          img.src = e.target.value;
+        }
       }
     });
   });
@@ -2178,6 +2295,17 @@ function renderPubItems(){
   renderItemsList($('pubItems'));
   if($('aiOverlay').classList.contains('open')) renderItemsList($('aiItemsList'));
   syncBatchUI();
+}
+// AI 逐条生成时只更新那一行。之前每条都 renderPubItems() 重建整个列表，
+// 用户在下面手打描述的话，光标和输入法状态每识别一条就被打断一次。
+function refreshRowUI(it){
+  document.querySelectorAll('.row-item[data-id]').forEach(row=>{
+    if(row.dataset.id !== it.id) return;
+    const st = row.querySelector('.row-status');
+    if(st) st.innerHTML = statusDot(it.status);
+    const d = row.querySelector('input.desc');
+    if(d && document.activeElement !== d && d.value !== it.desc) d.value = it.desc;
+  });
 }
 $('pubAddRowBtn').addEventListener('click', ()=>{ pubItems.push({id:uid(),url:'',desc:'',status:'idle',source:''}); renderPubItems(); });
 $('aiAddRowBtn').addEventListener('click', ()=>{ pubItems.push({id:uid(),url:'',desc:'',status:'idle',source:''}); renderPubItems(); });
@@ -2387,14 +2515,17 @@ $('aiRunBtn').addEventListener('click', async ()=>{
   $('aiProgress').style.display='flex';
   for(const row of pending){
     if(aiAbort) break;
-    row.status='loading'; renderPubItems();
+    // 生成过程中用户可能把这行删了（批量删除），写回去只会丢进一个已经脱钩的对象
+    if(!pubItems.includes(row)){ done++; continue; }
+    row.status='loading'; refreshRowUI(row);
     try{ row.desc = await callVisionAPI(preset, prompt, row.url, aiController.signal); row.status='done'; }
     catch(err){ if(aiAbort || err.name==='AbortError') break; row.status='error'; failed++; }
     done++;
     $('aiProgress').innerHTML = `<span>已完成 <b>${done}</b> / ${total}</span><span>失败 <b>${failed}</b> 条</span>`;
-    renderPubItems();
+    refreshRowUI(row);
   }
   aiRunning=false; aiController=null; updateAiButtons();
+  renderPubItems();
   if(aiAbort) showToast('已停止');
   else if(total && failed===total) showToast('未正确识别，请检查预设与图片链接');
   else if(failed) showToast(`有 ${failed} 条未识别，请手动填写`);
@@ -2624,20 +2755,26 @@ const LANG_SAMPLES = {
 function fontCanvasHtml(f, mini){
   const family = ensureFontFace(f);
   const bgUrl = f.bg_image ? cssUrlSafe(f.bg_image) : '';
-  const bgStyle = bgUrl ? `background:url('${bgUrl}') center/cover;` : `background:${esc(f.bg_color||'#FFFFFF')};`;
-  const colorStyle = bgUrl ? 'color:#FFFFFF;' : `color:${isDarkColor(f.bg_color)?'#FFFFFF':'var(--ink)'};`;
+  // bg_color 直接进 style 属性。esc() 只处理 & < > " '，分号和括号原样保留，
+  // 所以必须按颜色格式校验，否则一条记录就能把整个界面盖掉。
+  const bgColor = safeCssColor(f.bg_color, '#FFFFFF');
+  const bgStyle = bgUrl ? `background:url('${bgUrl}') center/cover;` : `background:${bgColor};`;
+  const colorStyle = bgUrl ? 'color:#FFFFFF;' : `color:${isDarkColor(bgColor)?'#FFFFFF':'var(--ink)'};`;
   const alignClass = f.text_align==='left' ? ' align-left' : f.text_align==='right' ? ' align-right' : '';
   // mini (browse-list card) always renders at a fixed size via CSS — no
   // need to scale toward the configured font_size here anymore.
-  const fontSize = f.font_size || 48;
-  let html = `<div class="font-card-main" style="font-family:'${family}',sans-serif; font-size:${fontSize}px; letter-spacing:${f.letter_spacing||0}px;">${esc(f.display_text||f.name)}</div>`;
+  // 这两个之前完全没过滤就拼进 style="..."，值里带个引号就能闭合属性挂 onerror
+  const fontSize = clampNum(f.font_size, 8, 200, 48);
+  const spacing = clampNum(f.letter_spacing, -20, 80, 0);
+  let html = `<div class="font-card-main" style="font-family:'${family}',sans-serif; font-size:${fontSize}px; letter-spacing:${spacing}px;">${esc(f.display_text||f.name)}</div>`;
   if(!mini){
-    (f.languages||[]).forEach(key=>{
-      const s = LANG_SAMPLES[key]; if(!s) return;
+    asArray(f.languages).forEach(key=>{
+      const s = Object.prototype.hasOwnProperty.call(LANG_SAMPLES, String(key)) ? LANG_SAMPLES[key] : null;
+      if(!s) return;
       const cls = (key==='digits'||key==='symbols') ? ' font-card-digits' : '';
       html += `<div class="font-lang-block${cls}" style="font-family:'${family}',sans-serif;"><div class="lbl">${esc(s.label)}</div>${esc(s.text)}</div>`;
     });
-    (f.custom_blocks||[]).forEach(b=>{
+    asArray(f.custom_blocks).forEach(b=>{
       if(b && b.text && String(b.text).trim()) html += `<div class="font-lang-block" style="font-family:'${family}',sans-serif;"><div class="lbl">${esc(b.label||'自定义')}</div>${esc(b.text)}</div>`;
     });
   }
@@ -2645,7 +2782,12 @@ function fontCanvasHtml(f, mini){
 }
 
 /* ---- tap-to-preview lightbox: full-size view without leaving the list ---- */
-function renderFontLightboxBody(f, justToggled){
+// 每次都按 id 重新取。之前闭包里抓着打开那一刻的 f 对象，
+// 后台 45 秒静默刷新会把整个 fonts 数组换成新对象，
+// 于是点赞改的是新对象、弹层重渲染读的是旧对象，数字永远不动。
+function renderFontLightboxBody(id, justToggled){
+  const f = fonts.find(x=>x.id===id);
+  if(!f){ $('fontLightboxMask').classList.remove('show'); return; }
   const isLiked = liked.has(f.id), isFav = favorited.has(f.id);
   const isOwner = f.user_id === currentUserId;
   $('fontLightboxCard').innerHTML = `
@@ -2661,8 +2803,8 @@ function renderFontLightboxBody(f, justToggled){
       <button class="font-lightbox-more" id="lbFontMoreBtn">${isOwner?'管理这个字体 ›':'查看详情 ›'}</button>
     </div>
   `;
-  $('lbFontLikeBtn').addEventListener('click', async ()=>{ await toggleLikeRemote(f.id, true); renderFontLightboxBody(f, 'like'); renderAll(); });
-  $('lbFontFavBtn').addEventListener('click', async ()=>{ await toggleFavoriteRemote(f.id, true); renderFontLightboxBody(f, 'fav'); renderAll(); });
+  $('lbFontLikeBtn').addEventListener('click', async ()=>{ await toggleLikeRemote(f.id, true); renderFontLightboxBody(f.id, 'like'); renderAll(); });
+  $('lbFontFavBtn').addEventListener('click', async ()=>{ await toggleFavoriteRemote(f.id, true); renderFontLightboxBody(f.id, 'fav'); renderAll(); });
   $('lbFontShareBtn').addEventListener('click', ()=>{
     openShareSheet({
       title: f.name,
@@ -2680,7 +2822,7 @@ function renderFontLightboxBody(f, justToggled){
 }
 function openFontLightbox(id){
   const f = fonts.find(x=>x.id===id); if(!f) return;
-  renderFontLightboxBody(f);
+  renderFontLightboxBody(id);
   $('fontLightboxMask').classList.add('show');
 }
 $('fontLightboxCard').addEventListener('click', e=>e.stopPropagation());
@@ -2694,7 +2836,7 @@ function openFontDetail(id){
   const f = fonts.find(x=>x.id===id); if(!f) return;
   openFontId = id;
   $('fontDetailTitle').textContent = f.name;
-  renderFontDetailBody(f);
+  renderFontDetailBody(id);
   const isOwner = f.user_id === currentUserId;
   $('fontDetailActions').innerHTML = isOwner
     ? `<button class="icon-btn" id="fontEditBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button><button class="icon-btn" id="fontDeleteBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg></button>`
@@ -2706,6 +2848,8 @@ function openFontDetail(id){
         const { error } = await sb.from('fonts').delete().eq('id', f.id);
         if(error){ showToast('删除失败：'+error.message); return; }
         $('fontDetailOverlay').classList.remove('open');
+        openFontId = null;
+        liked.delete(f.id); favorited.delete(f.id);
         await loadFonts(); renderAll();
         showToast('已删除');
       });
@@ -2713,7 +2857,9 @@ function openFontDetail(id){
   }
   $('fontDetailOverlay').classList.add('open');
 }
-function renderFontDetailBody(f, justToggled){
+function renderFontDetailBody(id, justToggled){
+  const f = fonts.find(x=>x.id===id);
+  if(!f){ $('fontDetailOverlay').classList.remove('open'); return; }
   const isLiked = liked.has(f.id), isFav = favorited.has(f.id);
   $('fontDetailBody').innerHTML = `
     <div class="font-card-stage">${fontCanvasHtml(f, false)}</div>
@@ -2726,8 +2872,8 @@ function renderFontDetailBody(f, justToggled){
     </div>
     <div class="btn-row" style="margin-top:14px;"><button class="btn-outline" id="fontCopyLinkBtn">复制字体链接</button></div>
   `;
-  $('fontLikeBtn').addEventListener('click', async ()=>{ await toggleLikeRemote(f.id, true); renderFontDetailBody(f, 'like'); renderAll(); });
-  $('fontFavBtn').addEventListener('click', async ()=>{ await toggleFavoriteRemote(f.id, true); renderFontDetailBody(f, 'fav'); renderAll(); });
+  $('fontLikeBtn').addEventListener('click', async ()=>{ await toggleLikeRemote(f.id, true); renderFontDetailBody(f.id, 'like'); renderAll(); });
+  $('fontFavBtn').addEventListener('click', async ()=>{ await toggleFavoriteRemote(f.id, true); renderFontDetailBody(f.id, 'fav'); renderAll(); });
   $('fontReportBtn').addEventListener('click', ()=>openReportSheet('font', f.id));
   $('fontShareBtn').addEventListener('click', ()=>{
     openShareSheet({
@@ -2756,10 +2902,12 @@ function openFontEditor(existing){
     name: existing.name, url: existing.url, text: existing.display_text || existing.name,
     category: FONT_CATEGORIES.includes(existing.category) ? existing.category : FONT_CATEGORIES[0],
     source: existing.source || '',
-    langs: Object.fromEntries(Object.keys(LANG_SAMPLES).map(k=>[k, (existing.languages||[]).includes(k)])),
-    customBlocks: JSON.parse(JSON.stringify(existing.custom_blocks||[])),
-    bg: existing.bg_color || '#FFFFFF', bgImage: existing.bg_image||'', fontSize: existing.font_size||48, spacing: existing.letter_spacing||0,
-    align: existing.text_align || 'center',
+    langs: Object.fromEntries(Object.keys(LANG_SAMPLES).map(k=>[k, asArray(existing.languages).includes(k)])),
+    customBlocks: asArray(existing.custom_blocks).filter(b=>b && typeof b==='object')
+      .map(b=>({label: String(b.label==null?'':b.label), text: String(b.text==null?'':b.text)})),
+    bg: safeCssColor(existing.bg_color, '#FFFFFF'), bgImage: existing.bg_image||'',
+    fontSize: clampNum(existing.font_size, 12, 96, 48), spacing: clampNum(existing.letter_spacing, -4, 20, 0),
+    align: ['left','center','right'].includes(existing.text_align) ? existing.text_align : 'center',
   } : {
     name:'', url:'', text:'杂货铺 Aa', category: FONT_CATEGORIES[0], source:'',
     langs: Object.fromEntries(Object.keys(LANG_SAMPLES).map(k=>[k,false])), customBlocks:[],
@@ -2820,8 +2968,9 @@ function renderFontEditorPreview(){
     canvas.style.background = `url('${bgUrl}') center/cover`;
     canvas.style.color = '#FFFFFF';
   } else {
-    canvas.style.background = fontEditorState.bg;
-    canvas.style.color = isDarkColor(fontEditorState.bg) ? '#FFFFFF' : 'var(--ink)';
+    const bg = safeCssColor(fontEditorState.bg, '#FFFFFF');
+    canvas.style.background = bg;
+    canvas.style.color = isDarkColor(bg) ? '#FFFFFF' : 'var(--ink)';
   }
   $('fontCardMain').style.fontFamily = `'${family}', sans-serif`;
   $('fontCardMain').style.fontSize = fontEditorState.fontSize+'px';
@@ -2940,12 +3089,12 @@ $('fontEditorSubmitBtn').addEventListener('click', async ()=>{
     category: fontEditorState.category,
     source: fontEditorState.source ? fontEditorState.source.trim() : null,
     languages: Object.keys(fontEditorState.langs).filter(k=>fontEditorState.langs[k]),
-    custom_blocks: fontEditorState.customBlocks.filter(b=>b.text && b.text.trim()),
-    bg_color: fontEditorState.bg,
+    custom_blocks: asArray(fontEditorState.customBlocks).filter(b=>b && b.text && String(b.text).trim()),
+    bg_color: safeCssColor(fontEditorState.bg, '#FFFFFF'),
     bg_image: fontEditorState.bgImage || null,
-    font_size: fontEditorState.fontSize,
-    letter_spacing: fontEditorState.spacing,
-    text_align: fontEditorState.align || 'center',
+    font_size: clampNum(fontEditorState.fontSize, 12, 96, 32),
+    letter_spacing: clampNum(fontEditorState.spacing, -4, 20, 0),
+    text_align: ['left','center','right'].includes(fontEditorState.align) ? fontEditorState.align : 'center',
   };
   $('fontEditorSubmitBtn').disabled = true;
   let error;
@@ -2972,6 +3121,49 @@ function handleDeepLink(){
     openDetail(collId);
   }
 }
+
+/* ===================== 系统返回键：关掉最上面那层，而不是退出整个应用 =====================
+   这是唯一一处行为改动（其余都是修 bug）。做法是监听这些弹层的 class 变化，
+   有层打开时往 history 里压一条，返回时弹掉最上面一层。不改任何现有的开关逻辑，
+   要撤掉的话整段删除即可。 */
+(function(){
+  const LAYER_IDS = ['detailOverlay','fontDetailOverlay','fontEditorOverlay','aiOverlay','settingsOverlay',
+                     'dlSheetMask','pubSheetMask','confirmSheetMask','shareSheetMask','reportSheetMask',
+                     'profileSheetMask','avatarCropMask','peekMask','fontLightboxMask'];
+  const openClassOf = id => (id==='peekMask' || id==='fontLightboxMask') ? 'show' : 'open';
+  const stack = [];              // 按打开先后排，最后一个就是最上层
+  let guard = 0;                 // 我们自己压进 history 的那条占位记录
+  let swallowPop = 0;            // 自己调 history.back() 时要吞掉对应的 popstate
+
+  const isOpen = id => { const el = $(id); return !!el && el.classList.contains(openClassOf(id)); };
+
+  function sync(){
+    LAYER_IDS.forEach(id=>{
+      const open = isOpen(id), at = stack.indexOf(id);
+      if(open && at === -1) stack.push(id);
+      else if(!open && at !== -1) stack.splice(at, 1);
+    });
+    if(stack.length && !guard){
+      try{ history.pushState({zhpLayer:1}, ''); guard = 1; }catch(e){ guard = 0; }
+    } else if(!stack.length && guard){
+      guard = 0; swallowPop++;
+      try{ history.back(); }catch(e){ swallowPop = Math.max(0, swallowPop - 1); }
+    }
+  }
+
+  const mo = new MutationObserver(sync);
+  LAYER_IDS.forEach(id=>{ const el = $(id); if(el) mo.observe(el, {attributes:true, attributeFilter:['class']}); });
+
+  window.addEventListener('popstate', ()=>{
+    if(swallowPop){ swallowPop--; return; }   // 是我们自己退的，不要再关一层
+    if(!stack.length) return;                 // 没有弹层，交给浏览器正常后退
+    guard = 0;                                // 刚才那条占位记录已经被弹掉了
+    const top = stack[stack.length - 1];
+    const el = $(top);
+    if(el) el.classList.remove(openClassOf(top));
+    sync();                                   // 底下还有层的话重新压一条
+  });
+})();
 
 /* ===================== init ===================== */
 function renderAll(){
