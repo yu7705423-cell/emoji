@@ -143,12 +143,17 @@
   .coll-card{cursor:pointer; text-align:left; background:transparent; border:none; padding:0; color:var(--text); width:100%; transition:transform .12s ease, opacity .12s ease; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; -webkit-user-drag:none;}
   .coll-card:active{transform:scale(.97); opacity:.9;}
   .coll-card img{-webkit-touch-callout:none; -webkit-user-drag:none; pointer-events:none;}
-  .coll-cover{width:100%; aspect-ratio:1/1; overflow:hidden; border:1px solid var(--border-soft); background:var(--border-soft); display:grid; gap:1px;}
-  .coll-cover.single{grid-template-columns:1fr; grid-template-rows:1fr;}
-  .coll-cover.two{grid-template-columns:1fr 1fr; grid-template-rows:1fr;}
-  .coll-cover.quad{grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr;}
-  .coll-cover img{width:100%; height:100%; object-fit:cover; display:block; background:var(--bg-elev);}
-  .cover-empty{width:100%; height:100%; background:var(--bg-elev);}
+  /* 正方形靠 padding-top 撑，不用 aspect-ratio：aspect-ratio 撑出来的高度
+     对 grid 子项来说不是"确定高度"，子图片的 height:100% 就解析不出来，
+     退回按自己原始长宽比算高——几张比例差很远的图拼在一起，格子就一个大一个小。
+     padding-top 是纯盒模型换算，历史悠久，不会有这个问题。 */
+  .coll-cover{width:100%; padding-top:100%; position:relative; overflow:hidden; border:1px solid var(--border-soft); background:var(--border-soft);}
+  .coll-cover-inner{position:absolute; inset:0; display:grid; gap:1px;}
+  .coll-cover.single .coll-cover-inner{grid-template-columns:1fr; grid-template-rows:1fr;}
+  .coll-cover.two .coll-cover-inner{grid-template-columns:1fr 1fr; grid-template-rows:1fr;}
+  .coll-cover.quad .coll-cover-inner{grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr;}
+  .coll-cover-cell{position:relative; overflow:hidden; background:var(--bg-elev);}
+  .coll-cover-cell img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block;}
   .coll-name{font-family:'Newsreader', Georgia, serif; font-style:italic; font-size:14px; margin-top:8px;}
   .coll-sub{font-size:11px; color:var(--text-dim); margin-top:2px;}
   .coll-stats{display:flex; align-items:center; gap:10px; font-size:11px; color:var(--text-faint); margin-top:3px;}
@@ -174,6 +179,11 @@
   .action-btn.pop svg{animation:pop .32s cubic-bezier(.3,1.5,.6,1);}
 
   .emoji-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:14px 18px;}
+  /* 网格子项默认 min-width:auto，长描述配 white-space:nowrap 会把它的"内容最小宽度"
+     撑成整行文字的宽度，两列本来该一样宽（1fr 1fr），结果长描述那列被撑大，
+     另一列被挤小——两张图各自看还是正方形，但明显一大一小。
+     min-width:0（配合下面的 overflow:hidden）把这个自动最小宽度清零。 */
+  .emoji-cell{min-width:0; overflow:hidden;}
   .emoji-cell img{width:100%; aspect-ratio:1/1; object-fit:cover; display:block; background:var(--bg-elev); border:1px solid var(--border-soft);}
   .emoji-caption{font-size:11.5px; color:var(--text-dim); margin-top:5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 
@@ -290,9 +300,9 @@
   .font-card-canvas{border-radius:22px; padding:32px 22px; min-height:180px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:14px; border:1px solid var(--border-soft); overflow:hidden; word-break:break-word; transition:background .15s ease, color .15s ease;}
   .font-card-canvas.align-left{align-items:flex-start; text-align:left;}
   .font-card-canvas.align-right{align-items:flex-end; text-align:right;}
-  .font-card-main{font-size:32px; line-height:1.3;}
+  .font-card-main{font-size:32px; line-height:1.3; white-space:pre-wrap;}
   .font-card-digits{font-size:22px; opacity:.7; letter-spacing:2px;}
-  .font-lang-block{font-size:16px; opacity:.85;}
+  .font-lang-block{font-size:16px; opacity:.85; white-space:pre-wrap;}
   .font-lang-block .lbl{font-size:10px; text-transform:uppercase; letter-spacing:.08em; opacity:.55; margin-bottom:4px;}
 
   /* font lightbox: tap a font card in any list to see it big, without navigating */
@@ -373,10 +383,14 @@
           <button data-type="fonts">字体</button>
         </div>
         <button class="icon-btn" id="homeRefreshBtn" aria-label="刷新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v6h-6"/></svg></button>
+        <button class="icon-btn" id="notifBtn" aria-label="通知" style="position:relative;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+          <span id="notifBadge" style="display:none; position:absolute; top:5px; right:5px; min-width:14px; height:14px; padding:0 3px; border-radius:999px; background:#E0453C; color:#fff; font-size:9px; font-weight:700; line-height:14px; text-align:center;"></span>
+        </button>
         <button class="icon-btn" id="homeSearchBtn" aria-label="搜索"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></button>
       </div>
       <div id="homeSearchWrap" style="display:none; margin-top:10px;">
-        <input class="field-input" id="homeSearch" placeholder="搜索表情包或字体">
+        <input class="field-input" id="homeSearch" placeholder="搜索表情包、字体或作者昵称">
       </div>
       <div class="chip-row" id="homeSortRow" style="margin-top:10px;">
         <button class="chip active" data-sort="new">最新</button>
@@ -396,7 +410,7 @@
         <button class="icon-btn" id="catSearchBtn" aria-label="搜索"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></button>
       </div>
       <div id="catSearchWrap" style="display:none; margin-top:10px;">
-        <input class="field-input" id="catSearch" placeholder="搜索作品 / 描述">
+        <input class="field-input" id="catSearch" placeholder="搜索作品 / 描述 / 作者昵称">
       </div>
       <div class="cat-sticky">
         <div class="section-title" style="margin-top:0;">分类</div>
@@ -525,6 +539,26 @@
     <div class="overlay-body" id="detailBody"></div>
   </div>
 
+  <!-- other users' public profile: read-only, opened by tapping any author name -->
+  <div class="overlay" id="userProfileOverlay" style="z-index:61;">
+    <div class="overlay-head">
+      <button class="icon-btn" id="userProfileBackBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <div class="overlay-title" id="userProfileTitle"></div>
+      <div style="width:34px;"></div>
+    </div>
+    <div class="overlay-body" style="padding:16px 18px;">
+      <div class="ig-head">
+        <div class="ig-avatar" style="cursor:default;"><span class="ph" id="userProfileAvatarPh">+</span><img id="userProfileAvatarImg" style="display:none;"></div>
+        <div class="ig-stats">
+          <div class="ig-stat"><b id="userProfileWorks">0</b><span>作品</span></div>
+          <div class="ig-stat"><b id="userProfileLikes">0</b><span>获赞</span></div>
+        </div>
+      </div>
+      <div class="ig-name" id="userProfileName"></div>
+      <div class="ig-grid-wrap" id="userProfileGrid" style="margin-top:16px;"></div>
+    </div>
+  </div>
+
   <!-- font showcase / detail overlay: READ-ONLY viewing, same for everyone -->
   <div class="overlay" id="fontDetailOverlay">
     <div class="overlay-head">
@@ -596,33 +630,16 @@
       <button class="icon-btn" id="aiSettingsBtn" aria-label="API 预设设置"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
     </div>
     <div class="overlay-body" style="padding:14px 18px;">
-      <div class="btn-row" style="margin-top:0;">
-        <button class="btn-outline" id="toggleImportBtnAi">从文本 / 文件导入</button>
-      </div>
-      <div class="panel" id="importPanelAi">
-        <div class="composer">
-          <textarea class="field" id="impInputAi" placeholder="每行一条，例如：&#10;真的服了：https://example.com/a.png&#10;笑死 https://example.com/b.png"></textarea>
-          <div class="composer-actions">
-            <button class="txt-btn" id="impUploadBtnAi">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14"/></svg>
-              上传 txt / docx
-            </button>
-            <button class="txt-btn" id="impClearBtnAi">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 7h12"/><path d="M9 7V4h6v3"/><path d="M7 7l1 13h8l1-13"/></svg>
-              清空
-            </button>
-          </div>
-        </div>
-        <input type="file" id="impFileInputAi" accept=".txt,.docx">
-        <div class="stats-line" id="impStatsAi" style="display:none;"><span>解析到 <b id="impTotalAi">0</b> 条</span></div>
-        <div class="row-list" id="impListAi"></div>
-        <div class="btn-row"><button class="btn-solid" id="impAddBtnAi">导入到下方列表</button></div>
-      </div>
-
-      <p class="hint" style="margin-top:18px;">对下面列表里还没有描述的表情，用视觉 API 自动生成一句描述；生成后仍可在这里直接改。没有预设的话点右上角齿轮添加。</p>
+      <p class="hint" style="margin-top:0;">这里就是「发布」页面的那份表情列表——在上一页导入 / 添加的内容会直接出现在下面，不用重新导入一遍。对还没有描述的表情，用视觉 API 自动生成一句描述；生成后仍可在这里直接改。没有预设的话点右上角齿轮添加。</p>
       <div class="chip-row" id="aiPresetRow"></div>
       <div class="field-label">Prompt</div>
       <textarea class="field-input" id="aiPromptInput" style="min-height:56px;"></textarea>
+      <div class="field-label">生成方式</div>
+      <div class="chip-row" id="aiModeRow">
+        <button class="chip active" data-mode="concurrent">并发调用</button>
+        <button class="chip" data-mode="merged">合并调用</button>
+      </div>
+      <p class="field-help" id="aiModeHelp">并发调用：还是一张图一次请求，但同时发好几个，比一张张排队快，接口调用次数不变。</p>
       <div class="btn-row">
         <button class="btn-solid" id="aiRunBtn">开始生成</button>
         <button class="btn-outline" id="aiStopBtn" style="display:none;">停止</button>
@@ -716,6 +733,11 @@
     <div class="sheet-box" id="reportSheetBox"></div>
   </div>
 
+  <!-- notifications sheet -->
+  <div class="sheet-mask" id="notifSheetMask">
+    <div class="sheet-box" id="notifSheetBox"></div>
+  </div>
+
   <!-- edit profile sheet -->
   <div class="sheet-mask" id="profileSheetMask">
     <div class="sheet-box" id="profileSheetBox"></div>
@@ -773,7 +795,7 @@ const WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const CATEGORIES = ["抽象","可爱","韩系","猫猫","情侣","发疯","搞笑","日常"];
 const FONT_CATEGORIES = ["系统体","手写体","可爱","复古","艺术"];
 const DESC_POOL = ["真的服了","我无语了","笑死","绝了","受不了了","爱了爱了","救命","好家伙","离谱","emo了","冲了","摆烂","睡了","开摆"];
-const DEFAULT_PROMPT = '你是表情包描述助手。用一句简洁的中文短语（不超过10个字）描述这张图表达的情绪或使用场景，方便之后检索，不要加标点，不要加多余解释。';
+const DEFAULT_PROMPT = '你是表情包描述助手。只输出一个不超过10个字的中文短语，描述这张图表达的情绪或使用场景，方便之后检索。严格要求：不要输出任何前缀、称呼、解释、思考过程、标点或引号；不要说"这张图片"之类的开场白；直接给出短语本身。例如：无语又想笑';
 const FORMATS = [
   {id:'fullcolon',    label:'全角冒号',      sep:'：'},
   {id:'halfcolon_sp', label:'半角冒号+空格', sep:': '},
@@ -865,6 +887,8 @@ let collections = [];
 let liked = new Set();
 let favorited = new Set();
 let fonts = [];
+let notifications = [];
+let userStats = new Map(); // userId -> {nickname, avatarUrl, worksCount, totalLikes}
 
 /* ===================== auth / boot ===================== */
 const AUTH_EMAIL_SUFFIX = '@zahuopu.invalid';
@@ -1019,16 +1043,6 @@ async function loadCollections(){
     .order('created_at', {ascending:false}).order('id', {ascending:true}));
   if(error){ showToast('加载作品失败：'+error.message); return; }
   const ids = (cols||[]).map(c=>c.id);
-  // collections_with_stats 是视图：给 collections 加的新列不会自动跟进视图。
-  // 视图里没有 source 就回基表补一次，视图修好之后这段自然不再触发。
-  let sourceById = null;
-  if((cols||[]).length && !('source' in cols[0])){
-    console.warn('collections_with_stats 视图里没有 source 列，正在回基表补齐（建议重建视图）');
-    const { data: srcRows, error: sErr } = await fetchAllRows(()=> sb.from('collections')
-      .select('id, source').order('id', {ascending:true}));
-    if(sErr) console.warn('回基表取 source 失败：', sErr.message);
-    else sourceById = Object.fromEntries((srcRows||[]).map(r=>[r.id, r.source||'']));
-  }
   const byCollection = {};
   for(const chunk of chunkArray(ids, 100)){
     const { data: emojis, error: eErr } = await fetchAllRows(()=> sb.from('emojis')
@@ -1047,7 +1061,7 @@ async function loadCollections(){
     authorId: c.user_id,
     authorAvatarUrl: c.author_avatar_url || null,
     category: c.category,
-    source: c.source || (sourceById ? (sourceById[c.id] || '') : ''),
+    source: c.source || '',
     likeCount: c.like_count || 0,
     emojis: byCollection[c.id] || [],
     createdAt: new Date(c.created_at).getTime(),
@@ -1064,7 +1078,7 @@ async function loadMyLikesFavorites(){
   else favorited = new Set((favRows||[]).flatMap(r=>[r.collection_id, r.font_id].filter(Boolean)));
 }
 async function loadAppData(){
-  await Promise.all([loadCollections(), loadMyLikesFavorites(), loadFonts()]);
+  await Promise.all([loadCollections(), loadMyLikesFavorites(), loadFonts(), loadNotifications()]);
   renderProfileBits();
   renderAll();
   startAutoRefresh();
@@ -1075,9 +1089,9 @@ let autoRefreshTimer = null;
 let refreshInFlight = false;
 function isBusyForRefresh(){
   if(currentPageId === 'publish') return true;
-  const overlayIds = ['detailOverlay','fontDetailOverlay','fontEditorOverlay','aiOverlay','settingsOverlay'];
+  const overlayIds = ['detailOverlay','fontDetailOverlay','fontEditorOverlay','aiOverlay','settingsOverlay','userProfileOverlay'];
   if(overlayIds.some(id => { const el=$(id); return el && el.classList.contains('open'); })) return true;
-  const sheetIds = ['dlSheetMask','pubSheetMask','confirmSheetMask','shareSheetMask','reportSheetMask','profileSheetMask','avatarCropMask'];
+  const sheetIds = ['dlSheetMask','pubSheetMask','confirmSheetMask','shareSheetMask','reportSheetMask','profileSheetMask','avatarCropMask','notifSheetMask'];
   if(sheetIds.some(id => { const el=$(id); return el && el.classList.contains('open'); })) return true;
   // 这两个用的是 .show 不是 .open，之前漏掉了，长按预览/字体大图开着时照样会被刷新打断
   const showIds = ['peekMask','fontLightboxMask'];
@@ -1091,7 +1105,7 @@ async function silentRefresh(force){
   const scroller = document.querySelector('.page-scroll');
   const scrollPos = scroller ? scroller.scrollTop : 0;
   try{
-    await Promise.all([loadCollections(), loadMyLikesFavorites(), loadFonts()]);
+    await Promise.all([loadCollections(), loadMyLikesFavorites(), loadFonts(), loadNotifications()]);
     renderProfileBits();
     renderAll();
     if(scroller) scroller.scrollTop = scrollPos;
@@ -1154,7 +1168,19 @@ async function createCollectionRemote(title, category, items, source){
   };
   const { data: assets, error: aErr } = await sb.from('image_assets')
     .insert(items.map(it=>({ source_type:'external_url', source_url: it.url.trim(), user_id: currentUserId }))).select();
-  if(aErr){ await rollback(); showToast('图片保存失败：'+aErr.message); return false; }
+  if(aErr){
+    await rollback();
+    let memberCheck = 'query failed';
+    try{ const r = await sb.rpc('is_member'); memberCheck = JSON.stringify(r); }catch(e){ memberCheck = 'exception: '+e.message; }
+    let realAuthId = 'query failed';
+    try{ const { data: ud, error: uerr } = await sb.auth.getUser(); realAuthId = uerr ? ('error: '+uerr.message) : (ud?.user?.id || 'null'); }catch(e){ realAuthId = 'exception: '+e.message; }
+    alert('DEBUG image_assets insert error:\n'+JSON.stringify(aErr, null, 2)
+      +'\n\ncurrentUserId (JS变量) = '+currentUserId
+      +'\nauth.getUser() 真实id = '+realAuthId
+      +'\n两者是否一致 = '+(currentUserId===realAuthId)
+      +'\nis_member() via rpc = '+memberCheck);
+    showToast('图片保存失败：'+aErr.message); return false;
+  }
   const assetIds = mapAssetsToItems(items, assets);
   if(!assetIds){
     await rollback((assets||[]).map(a=>a.id));
@@ -1180,7 +1206,18 @@ async function updateCollectionRemote(id, title, category, items, source){
   // 2) 先插新图片资源（这一步不破坏任何现有数据）
   const { data: assets, error: aErr } = await sb.from('image_assets')
     .insert(items.map(it=>({ source_type:'external_url', source_url: it.url.trim(), user_id: currentUserId }))).select();
-  if(aErr){ showToast('图片保存失败：'+aErr.message); return false; }
+  if(aErr){
+    let memberCheck = 'query failed';
+    try{ const r = await sb.rpc('is_member'); memberCheck = JSON.stringify(r); }catch(e){ memberCheck = 'exception: '+e.message; }
+    let realAuthId = 'query failed';
+    try{ const { data: ud, error: uerr } = await sb.auth.getUser(); realAuthId = uerr ? ('error: '+uerr.message) : (ud?.user?.id || 'null'); }catch(e){ realAuthId = 'exception: '+e.message; }
+    alert('DEBUG image_assets insert error:\n'+JSON.stringify(aErr, null, 2)
+      +'\n\ncurrentUserId (JS变量) = '+currentUserId
+      +'\nauth.getUser() 真实id = '+realAuthId
+      +'\n两者是否一致 = '+(currentUserId===realAuthId)
+      +'\nis_member() via rpc = '+memberCheck);
+    showToast('图片保存失败：'+aErr.message); return false;
+  }
   const newAssetIds = (assets||[]).map(a=>a.id);
   const pairedIds = mapAssetsToItems(items, assets);
   if(!pairedIds){
@@ -1262,7 +1299,19 @@ async function toggleLikeRemote(id, isFont){
     liked.add(id); bumpLikeCount(id, isFont, 1);
     const { error } = await sb.from('likes').insert({ user_id: currentUserId, [col]: id });
     if(error){ liked.delete(id); bumpLikeCount(id, isFont, -1); showToast('操作失败：'+error.message); }
+    else notifyLike(id, isFont);
   }
+}
+// 点赞提醒：只在"点赞"（不是取消点赞）且不是给自己的作品点赞时写一条通知。
+// notifications 表需要另外在 Supabase 里建（见仓库里的 sql/notifications.sql），
+// 这里失败了就静默跳过，不能因为提醒写不进去就让点赞本身报错。
+async function notifyLike(id, isFont){
+  const ownerId = isFont ? (fonts.find(x=>x.id===id)||{}).user_id : (collections.find(x=>x.id===id)||{}).authorId;
+  if(!ownerId || ownerId===currentUserId) return;
+  const payload = { recipient_id: ownerId, actor_id: currentUserId, actor_nickname: currentUser, type:'like' };
+  payload[isFont ? 'font_id' : 'collection_id'] = id;
+  const { error } = await sb.from('notifications').insert(payload);
+  if(error) console.warn('写点赞提醒失败（可能还没建 notifications 表，见 sql/notifications.sql）：', error.message);
 }
 async function toggleFavoriteRemote(id, isFont){
   const col = isFont ? 'font_id' : 'collection_id';
@@ -1276,6 +1325,76 @@ async function toggleFavoriteRemote(id, isFont){
     if(error){ favorited.delete(id); showToast('操作失败：'+error.message); }
   }
 }
+/* ===================== 点赞提醒 ===================== */
+async function loadNotifications(){
+  if(!currentUserId) return;
+  try{
+    const { data, error } = await sb.from('notifications').select('*')
+      .eq('recipient_id', currentUserId).order('created_at', {ascending:false}).limit(50);
+    if(error) throw error;
+    notifications = data || [];
+  }catch(e){
+    // 表还没建的时候（用户还没跑 sql/notifications.sql）静默跳过，别打扰主流程
+    console.warn('加载通知失败（可能还没建 notifications 表，见 sql/notifications.sql）：', e && e.message);
+  }
+  renderNotifBadge();
+}
+function renderNotifBadge(){
+  const el = $('notifBadge'); if(!el) return;
+  const n = notifications.filter(x=>!x.read).length;
+  el.textContent = n>99 ? '99+' : String(n);
+  el.style.display = n>0 ? 'block' : 'none';
+}
+function notifTargetTitle(n){
+  if(n.collection_id){ const c = collections.find(x=>x.id===n.collection_id); return c ? c.title : '一个表情包'; }
+  if(n.font_id){ const f = fonts.find(x=>x.id===n.font_id); return f ? f.name : '一个字体'; }
+  return '你的作品';
+}
+function timeAgo(ts){
+  const s = Math.max(0, Math.floor((Date.now()-new Date(ts).getTime())/1000));
+  if(s<60) return '刚刚';
+  if(s<3600) return Math.floor(s/60)+' 分钟前';
+  if(s<86400) return Math.floor(s/3600)+' 小时前';
+  if(s<86400*30) return Math.floor(s/86400)+' 天前';
+  return new Date(ts).toLocaleDateString();
+}
+function renderNotifSheet(){
+  $('notifSheetBox').innerHTML = `
+    <div class="sheet-head"><span class="t">通知</span><button class="icon-btn" id="notifCloseBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+    <div class="sheet-scroll">
+      ${notifications.length ? `<div class="row-list">${notifications.map(n=>`
+        <div class="row-item" data-notif-collection="${esc(n.collection_id||'')}" data-notif-font="${esc(n.font_id||'')}" style="cursor:pointer;">
+          <div class="row-main">
+            <div style="font-size:13px;">❤️ ${authorLinkHtml(n.actor_id, n.actor_nickname||'有人')} 点赞了你的《${esc(notifTargetTitle(n))}》</div>
+            <div style="font-size:11px; color:var(--text-dim); margin-top:2px;">${timeAgo(n.created_at)}</div>
+          </div>
+        </div>`).join('')}</div>` : '<p class="hint">还没有收到点赞提醒</p>'}
+    </div>
+  `;
+  $('notifCloseBtn').addEventListener('click', ()=>$('notifSheetMask').classList.remove('open'));
+  $('notifSheetBox').querySelectorAll('[data-notif-collection], [data-notif-font]').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      if(e.target.closest('.author-link')) return;
+      const cid = el.dataset.notifCollection, fid = el.dataset.notifFont;
+      $('notifSheetMask').classList.remove('open');
+      if(cid) openDetail(cid); else if(fid) openFontDetail(fid);
+    });
+  });
+}
+async function openNotifSheet(){
+  await loadNotifications();
+  renderNotifSheet();
+  $('notifSheetMask').classList.add('open');
+  const unreadIds = notifications.filter(x=>!x.read).map(x=>x.id);
+  if(unreadIds.length){
+    notifications.forEach(x=>x.read=true);
+    renderNotifBadge();
+    const { error } = await sb.from('notifications').update({read:true}).in('id', unreadIds);
+    if(error) console.warn('标记通知已读失败：', error.message);
+  }
+}
+$('notifBtn').addEventListener('click', openNotifSheet);
+
 async function saveProfileRemote(nickname, status, avatar){
   const { error } = await sb.from('users').update({ nickname, status_message: status, avatar_url: avatar }).eq('id', currentUserId);
   if(error){ showToast('保存失败：'+error.message); return false; }
@@ -1345,13 +1464,23 @@ function openReportSheet(workType, workId){
 /* ===================== generic share sheet: link or image card ===================== */
 function waitForCardImages(node){
   const imgs = Array.from(node.querySelectorAll('img'));
-  return Promise.all(imgs.map(img=>{
+  const imgWaits = imgs.map(img=>{
     if(img.complete && img.naturalWidth > 0) return Promise.resolve();
     return new Promise(resolve=>{
       img.addEventListener('load', resolve, {once:true});
       img.addEventListener('error', resolve, {once:true});
     });
+  });
+  // 用 background-image 画的格子（见 coverHtmlExport / fontCanvasHtml 的背景图）
+  // 不会触发 <img> 的 load 事件，得单独用 Image() 预热一遍再截图，
+  // 否则 html2canvas 经常正好赶上还没解码完，截出来是空的。
+  const bgEls = Array.from(node.querySelectorAll('[data-bg-url]'));
+  const bgWaits = bgEls.map(el=> new Promise(resolve=>{
+    const img = new Image();
+    img.onload = resolve; img.onerror = resolve;
+    img.src = el.dataset.bgUrl;
   }));
+  return Promise.all([...imgWaits, ...bgWaits]);
 }
 async function renderCardToBlob(node){
   if(typeof html2canvas === 'undefined') throw new Error('图片生成组件没加载成功，刷新页面再试');
@@ -1414,6 +1543,31 @@ function openShareSheet(opts){
     $('shareSheetMask').classList.remove('open');
   });
 }
+// html2canvas（本地那份 1.4.1）不认识 CSS 的 aspect-ratio，也不认识 <img> 的
+// object-fit:cover —— 页面里正常显示时靠这两个属性把不同尺寸的图裁成统一方块，
+// 但截图生成分享卡片时这两个属性都不生效，方块就变回图片原始比例，
+// 于是几张大小不一的图拼出来就一个大一个小。分享卡片专用这个版本：
+// 外层用 padding-top:100% 撑出正方形（纯百分比 padding，不依赖 aspect-ratio），
+// 每格图片改用 background-image + background-size:cover（html2canvas 支持
+// background-size，因为它本来就要处理页面背景），从根源上绕开这两个坑。
+function coverCellExport(e){
+  if(!e) return `<div style="width:100%; height:100%; background:#F7F7F7;"></div>`;
+  const url = cssUrlSafe(e.url);
+  return `<div data-bg-url="${esc(e.url)}" style="width:100%; height:100%; background-color:#F7F7F7; background-image:url('${url}'); background-size:cover; background-position:center;"></div>`;
+}
+function coverHtmlExport(emojis){
+  const imgs = (emojis||[]).slice(0,4);
+  let inner;
+  if(imgs.length<=1){
+    inner = `<div style="width:100%; height:100%;">${imgs[0]?coverCellExport(imgs[0]):''}</div>`;
+  } else if(imgs.length===2){
+    inner = `<div style="width:100%; height:100%; display:flex; gap:1px;">${imgs.map(e=>`<div style="flex:1; height:100%;">${coverCellExport(e)}</div>`).join('')}</div>`;
+  } else {
+    const cells = imgs.slice(0,4); while(cells.length<4) cells.push(null);
+    inner = `<div style="width:100%; height:100%; display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:1px;">${cells.map(e=>`<div>${coverCellExport(e)}</div>`).join('')}</div>`;
+  }
+  return `<div style="width:100%; padding-top:100%; position:relative; overflow:hidden; background:#EDEDED;"><div style="position:absolute; inset:0;">${inner}</div></div>`;
+}
 function buildFontShareCardNode(f){
   return shareCardWrap(`
     ${fontCanvasHtml(f, false)}
@@ -1425,7 +1579,7 @@ function buildFontShareCardNode(f){
 }
 function buildCollShareCardNode(c){
   return shareCardWrap(`
-    ${coverHtml(c.emojis, true)}
+    ${coverHtmlExport(c.emojis)}
     <div style="padding:16px 18px 20px;">
       <div style="font-family:'Newsreader',Georgia,serif; font-style:italic; font-size:17px; color:#000;">${esc(c.title)}</div>
       <div style="font-size:11.5px; color:#999; margin-top:4px;">${esc(c.author)} · ${c.emojis.length} 个表情 · 杂货铺</div>
@@ -1715,18 +1869,24 @@ function emojiCellHtml(e){
     <div class="emoji-caption">${esc(e.desc)}</div>
   </div>`;
 }
+function coverCellHtml(e, fadeAttr){
+  // 每格图片包一层 .coll-cover-cell，图片本身绝对定位铺满这层——
+  // 这样图片的原始长宽比不会影响格子大小，几张比例差很远的图拼出来才能一样大。
+  if(!e) return `<div class="coll-cover-cell"></div>`;
+  return `<div class="coll-cover-cell"><img src="${esc(e.url)}" ${fadeAttr} onerror="this.style.opacity=0"></div>`;
+}
 function coverHtml(emojis, noFade){
   const fadeAttr = noFade ? '' : FADE_ATTR;
   const imgs = emojis.slice(0,4);
   if(imgs.length<=1){
-    return `<div class="coll-cover single">${imgs[0]?`<img src="${esc(imgs[0].url)}" ${fadeAttr} onerror="this.style.opacity=0">`:''}</div>`;
+    return `<div class="coll-cover single"><div class="coll-cover-inner">${imgs[0]?coverCellHtml(imgs[0], fadeAttr):''}</div></div>`;
   }
   if(imgs.length===2){
-    return `<div class="coll-cover two">${imgs.map(e=>`<img src="${esc(e.url)}" ${fadeAttr} onerror="this.style.opacity=0">`).join('')}</div>`;
+    return `<div class="coll-cover two"><div class="coll-cover-inner">${imgs.map(e=>coverCellHtml(e, fadeAttr)).join('')}</div></div>`;
   }
   const cells = imgs.slice(0,4);
   while(cells.length<4) cells.push(null);
-  return `<div class="coll-cover quad">${cells.map(e=>e?`<img src="${esc(e.url)}" ${fadeAttr} onerror="this.style.opacity=0">`:'<div class="cover-empty"></div>').join('')}</div>`;
+  return `<div class="coll-cover quad"><div class="coll-cover-inner">${cells.map(e=>coverCellHtml(e, fadeAttr)).join('')}</div></div>`;
 }
 function heartIcon(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.4-9.5-9A5.5 5.5 0 0 1 12 5.5 5.5 5.5 0 0 1 21.5 11c-2.5 4.6-9.5 9-9.5 9z"/></svg>`; }
 function bookmarkIcon(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`; }
@@ -1737,12 +1897,79 @@ function statusDot(status){
   return '';
 }
 
+/* ===================== per-user stats (works count + likes received) ===================== */
+// 完全从已经加载好的 collections / fonts 里统计，不需要额外查表。
+// 只给"查看某用户主页"用来显示获赞数；排行榜/勋章那套挪到管理员页面去了，
+// 主页面这边不再对外展示排名。
+function rebuildUserStats(){
+  const map = new Map();
+  const touch = (id, nickname, avatarUrl) => {
+    let s = map.get(id);
+    if(!s){ s = {userId:id, nickname:'', avatarUrl:null, worksCount:0, totalLikes:0}; map.set(id, s); }
+    if(nickname) s.nickname = nickname;
+    if(avatarUrl) s.avatarUrl = avatarUrl;
+    return s;
+  };
+  collections.forEach(c=>{
+    if(!c.authorId) return;
+    const s = touch(c.authorId, c.author, c.authorAvatarUrl);
+    s.worksCount++; s.totalLikes += (c.likeCount||0);
+  });
+  fonts.forEach(f=>{
+    if(!f.user_id) return;
+    const s = touch(f.user_id, f.author_nickname, null);
+    s.worksCount++; s.totalLikes += (f.like_count||0);
+  });
+  userStats = map;
+}
+function authorLinkHtml(userId, name, extraStyle){
+  // 昵称做成可点的一小块，点开对方的公开主页。
+  // 用 span 不用 button：外面很多地方（表情包/字体卡片）本身就是一个大 <button>，
+  // button 不能嵌套 button，嵌了浏览器会自动把它挪到外面，把布局和点击都搞乱。
+  return `<span class="author-link" data-user-id="${esc(userId||'')}" data-user-name="${esc(name||'')}" style="cursor:pointer;${extraStyle||''}">${esc(name||'')}</span>`;
+}
+// 必须用捕获阶段：很多 author-link 是嵌在 .coll-card 这种大按钮里的，
+// 冒泡阶段拦截时 coll-card 自己的点击（打开详情页）已经先触发完了。
+document.addEventListener('click', (e)=>{
+  const link = e.target.closest && e.target.closest('.author-link');
+  if(!link) return;
+  e.stopPropagation();
+  const uid = link.dataset.userId;
+  if(!uid) return;
+  // 长按预览 / 字体大图 / 底部弹层的 z-index 都比普通 overlay 高，
+  // 不先关掉的话新打开的主页会被盖在下面，看着像点了没反应
+  $('peekMask').classList.remove('show');
+  $('fontLightboxMask').classList.remove('show');
+  $('notifSheetMask').classList.remove('open');
+  openUserProfile(uid, link.dataset.userName);
+}, true);
+
+/* ===================== other users' public profile (read-only) ===================== */
+function openUserProfile(userId, fallbackName){
+  const s = userStats.get(userId);
+  const nickname = (s && s.nickname) || fallbackName || '';
+  const avatarUrl = userId===currentUserId ? (getMyHdAvatar() || avatarDataUrl) : (s && s.avatarUrl) || null;
+  $('userProfileTitle').textContent = nickname || 'TA的主页';
+  $('userProfileName').textContent = nickname || '（未命名）';
+  if(avatarUrl){ $('userProfileAvatarImg').src = avatarUrl; $('userProfileAvatarImg').style.display='block'; $('userProfileAvatarPh').style.display='none'; }
+  else { $('userProfileAvatarImg').style.display='none'; $('userProfileAvatarPh').style.display='flex'; $('userProfileAvatarPh').textContent = (nickname||'?').slice(0,1); }
+  const items = [
+    ...collections.filter(c=>c.authorId===userId).map(c=>({type:'collection', data:c})),
+    ...fonts.filter(f=>f.user_id===userId).map(f=>({type:'font', data:f})),
+  ];
+  $('userProfileWorks').textContent = items.length;
+  $('userProfileLikes').textContent = (s && s.totalLikes) || 0;
+  renderItemsGrid($('userProfileGrid'), items, '这位用户还没有发布过作品');
+  $('userProfileOverlay').classList.add('open');
+}
+$('userProfileBackBtn').addEventListener('click', ()=>$('userProfileOverlay').classList.remove('open'));
+
 /* ===================== collection cards / grids (with long-press peek) ===================== */
 function collCardHtml(c){
   return `<button class="coll-card" data-id="${esc(c.id)}">
     ${coverHtml(c.emojis)}
     <div class="coll-name">${esc(c.title)}</div>
-    <div class="coll-sub">${esc(c.author)} · ${esc(c.category)}</div>
+    <div class="coll-sub">${authorLinkHtml(c.authorId, c.author)} · ${esc(c.category)}</div>
     <div class="coll-stats"><span>${c.emojis.length} 个表情</span><span>${heartIcon()}${c.likeCount}</span></div>
   </button>`;
 }
@@ -1750,7 +1977,7 @@ function fontBrowseCardHtml(f){
   return `<button class="coll-card" data-font-id="${esc(f.id)}">
     ${fontCanvasHtml(f, true)}
     <div class="coll-name">${esc(f.name)}</div>
-    <div class="coll-sub">${esc(f.author_nickname)} · ${esc(f.category||'')}</div>
+    <div class="coll-sub">${authorLinkHtml(f.user_id, f.author_nickname)} · ${esc(f.category||'')}</div>
     <div class="coll-stats"><span>${heartIcon()}${f.like_count||0}</span></div>
   </button>`;
 }
@@ -1795,7 +2022,7 @@ function showPeek(id){
     <div class="peek-body">
       <div class="peek-head">
         <div class="peek-avatar">${avatarSrc?`<img src="${esc(avatarSrc)}">`:`<span>${esc(c.author.slice(0,1))}</span>`}</div>
-        <div class="peek-author">${esc(c.author)}</div>
+        <div class="peek-author">${authorLinkHtml(c.authorId, c.author)}</div>
       </div>
       <div class="peek-title">${esc(c.title)}</div>
       <div class="peek-stats"><span>${c.emojis.length} 个表情</span><span>${heartIcon()}${c.likeCount}</span></div>
@@ -1824,11 +2051,11 @@ function renderHome(){
   // 否则搜索状态下点切换毫无反应，很困惑
   if(homeMode==='fonts'){
     let list = fonts;
-    if(q) list = list.filter(f => low(f.name).includes(q) || low(f.category).includes(q) || low(f.display_text).includes(q));
+    if(q) list = list.filter(f => low(f.name).includes(q) || low(f.category).includes(q) || low(f.display_text).includes(q) || low(f.author_nickname).includes(q));
     items = list.map(f=>({type:'font', data:f, sortKey: homeSort==='hot' ? (f.like_count||0) : new Date(f.created_at).getTime()}));
   } else {
     let list = collections;
-    if(q) list = list.filter(c => low(c.title).includes(q) || low(c.category).includes(q) || c.emojis.some(e=>low(e.desc).includes(q)));
+    if(q) list = list.filter(c => low(c.title).includes(q) || low(c.category).includes(q) || low(c.author).includes(q) || c.emojis.some(e=>low(e.desc).includes(q)));
     items = list.map(c=>({type:'collection', data:c, sortKey: homeSort==='hot' ? c.likeCount : c.createdAt}));
   }
   items.sort((a,b)=>b.sortKey-a.sortKey);
@@ -1872,11 +2099,11 @@ function renderCategory(){
   let items;
   if(catMode==='fonts'){
     let list = activeCategory ? fonts.filter(f=>f.category===activeCategory) : fonts.slice();
-    if(q){ list = list.filter(f=>low(f.name).includes(q) || low(f.display_text).includes(q)); }
+    if(q){ list = list.filter(f=>low(f.name).includes(q) || low(f.display_text).includes(q) || low(f.author_nickname).includes(q)); }
     items = list.map(f=>({type:'font', data:f}));
   } else {
     let list = activeCategory ? collections.filter(c=>c.category===activeCategory) : collections.slice();
-    if(q){ list = list.filter(c=>low(c.title).includes(q) || c.emojis.some(e=>low(e.desc).includes(q))); }
+    if(q){ list = list.filter(c=>low(c.title).includes(q) || low(c.author).includes(q) || c.emojis.some(e=>low(e.desc).includes(q))); }
     items = list.map(c=>({type:'collection', data:c}));
   }
   renderItemsGrid($('catGrid'), items, activeCategory ? `「${activeCategory}」分类下暂时还没有内容` : '还没有内容');
@@ -1959,7 +2186,7 @@ function renderDetail(justToggled){
     <div class="detail-cover">${coverHtml(c.emojis)}</div>
     <div class="detail-meta">
       <div class="detail-title">${esc(c.title)}</div>
-      <div class="detail-sub">${esc(c.author)} · ${esc(c.category)} · ${c.emojis.length} 个表情${c.source?` · 来源：${esc(c.source)}`:''}</div>
+      <div class="detail-sub">${authorLinkHtml(c.authorId, c.author)} · ${esc(c.category)} · ${c.emojis.length} 个表情${c.source?` · 来源：${esc(c.source)}`:''}</div>
       <div class="action-row">
         <button class="action-btn ${isLiked?'active':''}" id="likeBtn">${heartIcon()}<span>${c.likeCount}</span></button>
         <button class="action-btn ${isFav?'active':''}" id="favBtn">${bookmarkIcon()}<span>${isFav?'已收藏':'收藏'}</span></button>
@@ -2143,13 +2370,7 @@ function openDownloadSheet(c){
       $('dlCopyBtn').addEventListener('click', async ()=>{
         try{ await navigator.clipboard.writeText(currentText()); showToast('已复制'); }catch(e){ showToast('复制失败'); }
       });
-      $('dlTxtBtn').addEventListener('click', ()=> {
-        // Blob 的 charset 参数只影响页面内读取，下载下来的文件是裸 UTF-8。
-        // 记事本/微信/部分安卓文本编辑器在中文环境下默认按 GBK 解，就成了乱码。
-        // 加 BOM 让它们认出 UTF-8；顺便换成 CRLF，老编辑器才不会把整篇挤成一行。
-        const txt = '\ufeff' + currentText().replace(/\r?\n/g, '\r\n');
-        downloadBlob(new Blob([txt],{type:'text/plain;charset=utf-8'}), `${safeFilename(c.title)}_${safeFilename(c.author)}.txt`);
-      });
+      $('dlTxtBtn').addEventListener('click', ()=> downloadBlob(new Blob([currentText()],{type:'text/plain;charset=utf-8'}), `${safeFilename(c.title)}_${safeFilename(c.author)}.txt`));
       $('dlDocxBtn').addEventListener('click', async ()=>{
         try{ downloadBlob(await buildDocxBlob(currentText()), `${safeFilename(c.title)}_${safeFilename(c.author)}.docx`); }
         catch(e){ showToast('生成 docx 失败'); }
@@ -2375,10 +2596,6 @@ $('toggleImportBtn').addEventListener('click', ()=>{
   const open = $('importPanel').classList.toggle('open');
   $('toggleImportBtn').classList.toggle('active', open);
 });
-$('toggleImportBtnAi').addEventListener('click', ()=>{
-  const open = $('importPanelAi').classList.toggle('open');
-  $('toggleImportBtnAi').classList.toggle('active', open);
-});
 
 /* ===================== reusable paste/upload import widget ===================== */
 function createImportWidget(ids){
@@ -2436,7 +2653,6 @@ function createImportWidget(ids){
   });
 }
 createImportWidget({input:'impInput', file:'impFileInput', upload:'impUploadBtn', clear:'impClearBtn', stats:'impStats', total:'impTotal', list:'impList', add:'impAddBtn'});
-createImportWidget({input:'impInputAi', file:'impFileInputAi', upload:'impUploadBtnAi', clear:'impClearBtnAi', stats:'impStatsAi', total:'impTotalAi', list:'impListAi', add:'impAddBtnAi'});
 
 /* ===================== AI overlay open/close ===================== */
 $('openAiBtn').addEventListener('click', ()=>{
@@ -2455,6 +2671,19 @@ let presets = [];
 let activePresetId = null;
 let editingPresetId = null;
 let aiRunning = false, aiAbort = false, aiController = null;
+let aiMode = 'concurrent'; // 'concurrent'：一图一请求但并发跑；'merged'：多张图拼进一次请求
+const AI_MODE_HELP = {
+  concurrent: '并发调用：还是一张图一次请求，但同时发好几个，比一张张排队快，接口调用次数不变。',
+  merged: '合并调用：把好几张图拼进同一次请求，让模型按顺序依次描述，接口调用次数明显变少——但要求模型比较听话地按行输出，效果不如逐张稳，出错了这一批会整体标记失败，可以重新生成。',
+};
+document.querySelectorAll('#aiModeRow .chip').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#aiModeRow .chip').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    aiMode = btn.dataset.mode;
+    $('aiModeHelp').textContent = AI_MODE_HELP[aiMode];
+  });
+});
 
 function renderAiPresetChips(){
   const wrap = $('aiPresetRow'); if(!wrap) return; wrap.innerHTML='';
@@ -2515,9 +2744,133 @@ async function callVisionAPI(preset, prompt, imageUrl, signal){
   if(!text) throw new Error('返回格式异常');
   return String(text).trim();
 }
+// 合并调用：把最多 AI_MERGE_BATCH_SIZE 张图拼进同一个请求，让模型按顺序
+// 依次输出每张图的描述，一次请求顶多张单独调用。批数太大容易超 token 上限、
+// 也更容易让模型数错行，所以限了个不大的批次。
+const AI_MERGE_BATCH_SIZE = 6;
+function buildMergedPrompt(prompt, n){
+  return prompt + `\n\n接下来会依次给你 ${n} 张图。请严格输出 ${n} 行，每行一个短语，按图片出现的顺序一一对应，不要编号、不要多余的空行、不要除短语以外的任何文字。`;
+}
+// 模型有时会自己加编号（"1. xxx"/"1、xxx"/"图1：xxx"），这里按行拆开后顺手去掉
+function splitBatchLines(text, n){
+  return String(text||'').split('\n')
+    .map(s=>s.trim())
+    .filter(Boolean)
+    .map(l=> l.replace(/^\s*(?:图?\s*\d+\s*[.、:：)]\s*)/,''));
+}
+async function callVisionAPIBatch(preset, prompt, rows, signal){
+  const n = rows.length;
+  const batchPrompt = buildMergedPrompt(prompt, n);
+  if(providerOf(preset)==='google'){
+    const parts = [{text: batchPrompt}];
+    for(const row of rows){
+      const image = await imageToInlineData(row.url, signal);
+      parts.push({inlineData:{mimeType:image.mimeType, data:image.data}});
+    }
+    const model = String(preset.model||'').replace(/^models\//,'');
+    const res = await fetch(googleBase(preset.endpoint)+'/models/'+encodeURIComponent(model)+':generateContent?key='+encodeURIComponent(preset.key), {
+      method:'POST', signal, headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({contents:[{role:'user', parts}], generationConfig:{maxOutputTokens:80*n+120}})
+    });
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    const text = data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts.map(p=>p.text||'').join('\n');
+    if(!text) throw new Error('返回格式异常');
+    return splitBatchLines(text, n);
+  }
+  const content = [{type:'text', text: batchPrompt}];
+  rows.forEach(row=>{ content.push({type:'image_url', image_url:{url: row.url}}); });
+  const res = await fetch(resolveEndpoint(preset.endpoint), {
+    method:'POST', signal, headers:{'Content-Type':'application/json', 'Authorization':'Bearer '+preset.key},
+    body: JSON.stringify({model:preset.model, messages:[{role:'system', content:batchPrompt},{role:'user', content}], max_tokens:80*n+120})
+  });
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  const data = await res.json();
+  const text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+  if(!text) throw new Error('返回格式异常');
+  return splitBatchLines(text, n);
+}
+// 视觉模型经常不听话：会在真正的描述前后加"好的，这张图片是..."之类的
+// 开场白、把描述包在引号里、甚至带一段 <think>...</think> 推理过程。
+// 这里做一次尽量通用的清理，而不是指望所有模型都严格听 prompt。
+function cleanAiDesc(text){
+  let t = String(text||'');
+  t = t.replace(/<think[\s\S]*?<\/think>/gi, ' ');
+  t = t.replace(/```[\s\S]*?```/g, ' ');
+  t = t.split('\n').map(s=>s.trim()).filter(Boolean);
+  // 多行时取最后一行：啰嗦的模型通常是"先解释/推理，最后给答案"
+  let line = t.length ? t[t.length-1] : '';
+  line = line.trim();
+  line = line.replace(/^["'“”‘’「」『』]+|["'“”‘’「」『』]+$/g, '');
+  // 开场白经常是"好的，这张图片表达的情绪是：xxx"这种叠了两三层的前缀，
+  // 一次 replace 只吃掉最外层，所以要反复剥，直到剥不动为止
+  const prefixRe = /^(好的[，,、]?\s*|这(张|个)?(图片?|表情包?|图)(所)?(表达|想表达|传达)?(的情绪|的意思|的内容)?(大概)?(是|为)?[:：，,]?\s*|描述[:：]\s*|答案[:：]\s*|(?:图?\s*\d+\s*[.、:：)]\s*))/;
+  for(let i=0;i<5;i++){
+    const next = line.replace(prefixRe,'');
+    if(next===line) break;
+    line = next;
+  }
+  line = line.replace(/[。.！!]+$/,'');
+  line = line.trim();
+  if(line.length > 20) line = line.slice(0,20);
+  return line;
+}
 function updateAiButtons(){
   $('aiRunBtn').style.display = aiRunning ? 'none' : 'flex';
   $('aiStopBtn').style.display = aiRunning ? 'flex' : 'none';
+}
+// 并发调用：还是一张图一次请求，但同时跑几个 worker，比排队一张张等快很多
+const AI_CONCURRENCY = 3;
+async function runAiConcurrent(pending, preset, prompt, signal, onTick){
+  let cursor = 0, done = 0, failed = 0;
+  async function worker(){
+    for(;;){
+      if(aiAbort) return;
+      const row = pending[cursor++];
+      if(!row) return;
+      // 生成过程中用户可能把这行删了（批量删除），写回去只会丢进一个已经脱钩的对象
+      if(!pubItems.includes(row)){ done++; onTick(done, failed); continue; }
+      row.status='loading'; refreshRowUI(row);
+      try{
+        const raw = await callVisionAPI(preset, prompt, row.url, signal);
+        const cleaned = cleanAiDesc(raw);
+        if(!cleaned) throw new Error('返回内容无法解析出描述');
+        row.desc = cleaned; row.status='done';
+      }catch(err){
+        if(aiAbort || err.name==='AbortError') return;
+        row.status='error'; failed++;
+      }
+      done++; onTick(done, failed); refreshRowUI(row);
+    }
+  }
+  const workers = Array.from({length: Math.min(AI_CONCURRENCY, pending.length)}, worker);
+  await Promise.all(workers);
+  return {done, failed};
+}
+// 合并调用：把待生成的图按 AI_MERGE_BATCH_SIZE 分批，每批一次请求。
+// 一批里只要行数对不上就整批标记失败——按位置瞎对的话错得更隐蔽，不如让人重试。
+async function runAiMerged(pending, preset, prompt, signal, onTick){
+  let done = 0, failed = 0;
+  for(let i=0; i<pending.length; i+=AI_MERGE_BATCH_SIZE){
+    if(aiAbort) break;
+    const batch = pending.slice(i, i+AI_MERGE_BATCH_SIZE).filter(row=>pubItems.includes(row));
+    if(!batch.length) continue;
+    batch.forEach(row=>{ row.status='loading'; refreshRowUI(row); });
+    try{
+      const lines = await callVisionAPIBatch(preset, prompt, batch, signal);
+      if(lines.length !== batch.length) throw new Error(`返回了 ${lines.length} 行，和这批 ${batch.length} 张图对不上`);
+      batch.forEach((row, j)=>{
+        const cleaned = cleanAiDesc(lines[j]);
+        if(cleaned){ row.desc = cleaned; row.status='done'; } else { row.status='error'; failed++; }
+        done++; refreshRowUI(row);
+      });
+    }catch(err){
+      if(aiAbort || err.name==='AbortError') break;
+      batch.forEach(row=>{ row.status='error'; failed++; done++; refreshRowUI(row); });
+    }
+    onTick(done, failed);
+  }
+  return {done, failed};
 }
 $('aiRunBtn').addEventListener('click', async ()=>{
   const preset = presets.find(p=>p.id===activePresetId);
@@ -2527,19 +2880,13 @@ $('aiRunBtn').addEventListener('click', async ()=>{
   if(!pending.length){ showToast('没有需要生成描述的表情（描述为空的才会生成）'); return; }
   const prompt = $('aiPromptInput').value.trim() || DEFAULT_PROMPT;
   aiRunning=true; aiAbort=false; aiController=new AbortController(); updateAiButtons();
-  let done=0, failed=0; const total=pending.length;
+  const total=pending.length;
   $('aiProgress').style.display='flex';
-  for(const row of pending){
-    if(aiAbort) break;
-    // 生成过程中用户可能把这行删了（批量删除），写回去只会丢进一个已经脱钩的对象
-    if(!pubItems.includes(row)){ done++; continue; }
-    row.status='loading'; refreshRowUI(row);
-    try{ row.desc = await callVisionAPI(preset, prompt, row.url, aiController.signal); row.status='done'; }
-    catch(err){ if(aiAbort || err.name==='AbortError') break; row.status='error'; failed++; }
-    done++;
-    $('aiProgress').innerHTML = `<span>已完成 <b>${done}</b> / ${total}</span><span>失败 <b>${failed}</b> 条</span>`;
-    refreshRowUI(row);
-  }
+  $('aiProgress').innerHTML = `<span>已完成 <b>0</b> / ${total}</span><span>失败 <b>0</b> 条</span>`;
+  const onTick = (done, failed) => { $('aiProgress').innerHTML = `<span>已完成 <b>${done}</b> / ${total}</span><span>失败 <b>${failed}</b> 条</span>`; };
+  const { failed } = aiMode === 'merged'
+    ? await runAiMerged(pending, preset, prompt, aiController.signal, onTick)
+    : await runAiConcurrent(pending, preset, prompt, aiController.signal, onTick);
   aiRunning=false; aiController=null; updateAiButtons();
   renderPubItems();
   if(aiAbort) showToast('已停止');
@@ -2794,7 +3141,8 @@ function fontCanvasHtml(f, mini){
       if(b && b.text && String(b.text).trim()) html += `<div class="font-lang-block" style="font-family:'${family}',sans-serif;"><div class="lbl">${esc(b.label||'自定义')}</div>${esc(b.text)}</div>`;
     });
   }
-  return `<div class="font-card-canvas${mini?' mini':''}${alignClass}" style="${bgStyle}${colorStyle}">${html}</div>`;
+  const bgAttr = bgUrl ? ` data-bg-url="${esc(f.bg_image)}"` : '';
+  return `<div class="font-card-canvas${mini?' mini':''}${alignClass}"${bgAttr} style="${bgStyle}${colorStyle}">${html}</div>`;
 }
 
 /* ---- tap-to-preview lightbox: full-size view without leaving the list ---- */
@@ -2810,7 +3158,7 @@ function renderFontLightboxBody(id, justToggled){
     <div>${fontCanvasHtml(f, false)}</div>
     <div class="font-lightbox-body">
       <div class="font-lightbox-name">${esc(f.name)}</div>
-      <div class="font-lightbox-sub">${esc(f.author_nickname||'')}</div>
+      <div class="font-lightbox-sub">${authorLinkHtml(f.user_id, f.author_nickname)}</div>
       <div class="action-row" style="margin-top:14px;">
         <button class="action-btn ${isLiked?'active':''}" id="lbFontLikeBtn">${heartIcon()}<span>${f.like_count||0}</span></button>
         <button class="action-btn ${isFav?'active':''}" id="lbFontFavBtn">${bookmarkIcon()}<span>${isFav?'已收藏':'收藏'}</span></button>
@@ -2879,6 +3227,7 @@ function renderFontDetailBody(id, justToggled){
   const isLiked = liked.has(f.id), isFav = favorited.has(f.id);
   $('fontDetailBody').innerHTML = `
     <div class="font-card-stage">${fontCanvasHtml(f, false)}</div>
+    <div class="detail-sub" style="margin-top:8px;">${authorLinkHtml(f.user_id, f.author_nickname)}</div>
     ${f.source?`<p class="hint" style="margin-top:8px;">来源：${esc(f.source)}</p>`:''}
     <div class="action-row" style="margin-top:16px;">
       <button class="action-btn ${isLiked?'active':''}" id="fontLikeBtn">${heartIcon()}<span>${f.like_count||0}</span></button>
@@ -3144,8 +3493,10 @@ function handleDeepLink(){
    要撤掉的话整段删除即可。 */
 (function(){
   const LAYER_IDS = ['detailOverlay','fontDetailOverlay','fontEditorOverlay','aiOverlay','settingsOverlay',
+                     'userProfileOverlay',
                      'dlSheetMask','pubSheetMask','confirmSheetMask','shareSheetMask','reportSheetMask',
-                     'profileSheetMask','avatarCropMask','peekMask','fontLightboxMask'];
+                     'profileSheetMask','avatarCropMask','peekMask','fontLightboxMask',
+                     'notifSheetMask'];
   const openClassOf = id => (id==='peekMask' || id==='fontLightboxMask') ? 'show' : 'open';
   const stack = [];              // 按打开先后排，最后一个就是最上层
   let guard = 0;                 // 我们自己压进 history 的那条占位记录
@@ -3183,6 +3534,7 @@ function handleDeepLink(){
 
 /* ===================== init ===================== */
 function renderAll(){
+  rebuildUserStats();
   renderHome();
   renderCategoryChips(); renderCategory();
   renderFavorites();
