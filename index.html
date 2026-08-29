@@ -1019,6 +1019,16 @@ async function loadCollections(){
     .order('created_at', {ascending:false}).order('id', {ascending:true}));
   if(error){ showToast('加载作品失败：'+error.message); return; }
   const ids = (cols||[]).map(c=>c.id);
+  // collections_with_stats 是视图：给 collections 加的新列不会自动跟进视图。
+  // 视图里没有 source 就回基表补一次，视图修好之后这段自然不再触发。
+  let sourceById = null;
+  if((cols||[]).length && !('source' in cols[0])){
+    console.warn('collections_with_stats 视图里没有 source 列，正在回基表补齐（建议重建视图）');
+    const { data: srcRows, error: sErr } = await fetchAllRows(()=> sb.from('collections')
+      .select('id, source').order('id', {ascending:true}));
+    if(sErr) console.warn('回基表取 source 失败：', sErr.message);
+    else sourceById = Object.fromEntries((srcRows||[]).map(r=>[r.id, r.source||'']));
+  }
   const byCollection = {};
   for(const chunk of chunkArray(ids, 100)){
     const { data: emojis, error: eErr } = await fetchAllRows(()=> sb.from('emojis')
@@ -1037,7 +1047,7 @@ async function loadCollections(){
     authorId: c.user_id,
     authorAvatarUrl: c.author_avatar_url || null,
     category: c.category,
-    source: c.source || '',
+    source: c.source || (sourceById ? (sourceById[c.id] || '') : ''),
     likeCount: c.like_count || 0,
     emojis: byCollection[c.id] || [],
     createdAt: new Date(c.created_at).getTime(),
@@ -2133,7 +2143,13 @@ function openDownloadSheet(c){
       $('dlCopyBtn').addEventListener('click', async ()=>{
         try{ await navigator.clipboard.writeText(currentText()); showToast('已复制'); }catch(e){ showToast('复制失败'); }
       });
-      $('dlTxtBtn').addEventListener('click', ()=> downloadBlob(new Blob([currentText()],{type:'text/plain;charset=utf-8'}), `${safeFilename(c.title)}_${safeFilename(c.author)}.txt`));
+      $('dlTxtBtn').addEventListener('click', ()=> {
+        // Blob 的 charset 参数只影响页面内读取，下载下来的文件是裸 UTF-8。
+        // 记事本/微信/部分安卓文本编辑器在中文环境下默认按 GBK 解，就成了乱码。
+        // 加 BOM 让它们认出 UTF-8；顺便换成 CRLF，老编辑器才不会把整篇挤成一行。
+        const txt = '\ufeff' + currentText().replace(/\r?\n/g, '\r\n');
+        downloadBlob(new Blob([txt],{type:'text/plain;charset=utf-8'}), `${safeFilename(c.title)}_${safeFilename(c.author)}.txt`);
+      });
       $('dlDocxBtn').addEventListener('click', async ()=>{
         try{ downloadBlob(await buildDocxBlob(currentText()), `${safeFilename(c.title)}_${safeFilename(c.author)}.docx`); }
         catch(e){ showToast('生成 docx 失败'); }
