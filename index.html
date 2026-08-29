@@ -18,9 +18,16 @@
 <meta property="og:description" content="表情包合集与字体，来看看大家分享了什么">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<!-- 供应链加固：这三个第三方脚本一旦被投毒就是全站账号失守。
+     给每个标签补上 integrity="sha384-..."。取哈希的方法二选一：
+       a) 打开 cdnjs.com 搜对应库版本，点 "Copy SRI"；
+       b) 本地执行（把 URL 换成下面各行的 src）：
+          curl -s <URL> | openssl dgst -sha384 -binary | openssl base64 -A
+     补完形如：<script src="..." integrity="sha384-xxxx" crossorigin="anonymous"></script>
+     注意：哈希填错脚本会被浏览器直接拦掉，改完务必在真机上验证一次。 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
 <style>
   :root{
     --bg:#FFFFFF; --bg-elev:#F7F7F7; --bg-hover:#EDEDED;
@@ -33,11 +40,12 @@
   html,body{height:100%; margin:0; padding:0; background:#EBEBEB;}
   body{color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue',Arial,sans-serif; -webkit-font-smoothing:antialiased; overflow:hidden;}
   button,input,textarea,select{font-family:inherit;color:inherit;}
-  html{touch-action:manipulation; -webkit-text-size-adjust:100%;}
+  html,body{touch-action:manipulation; -webkit-text-size-adjust:100%;}
+  button,input,textarea,select,a,.coll-card,.row-item,.chip,.sel-cell{touch-action:manipulation;}
   ::selection{background:var(--ink); color:var(--ink-contrast);}
   :focus-visible{outline:2px solid var(--ink); outline-offset:2px;}
   @media (prefers-reduced-motion:reduce){ *{animation-duration:.001s !important; transition-duration:.001s !important;} }
-  @media (max-width:600px){ input, textarea, select{font-size:16px !important;} }
+  @media (pointer: coarse), (max-width:600px){ input, textarea, select{font-size:16px !important;} }
 
   .frame{max-width:480px; margin:0 auto; height:100vh; display:flex; flex-direction:column; border-left:1px solid var(--border); border-right:1px solid var(--border); background:var(--bg); overflow:hidden;}
 
@@ -193,7 +201,7 @@
   .result-file{font-size:13px; font-family:ui-monospace, monospace; margin:6px 0 12px;}
   .result-pre{font-size:11.5px; white-space:pre-wrap; background:var(--bg-elev); padding:10px; border-radius:var(--radius-s); max-height:160px; overflow-y:auto; line-height:1.6;}
 
-  .toast{position:fixed; left:50%; bottom:calc(78px + env(safe-area-inset-bottom)); transform:translateX(-50%) translateY(10px); background:var(--ink); color:var(--ink-contrast); font-size:12px; font-weight:600; padding:9px 16px; border-radius:999px; z-index:90; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s;}
+  .toast{position:fixed; left:50%; bottom:calc(78px + env(safe-area-inset-bottom)); transform:translateX(-50%) translateY(10px); background:var(--ink); color:var(--ink-contrast); font-size:12px; font-weight:600; padding:9px 16px; border-radius:999px; z-index:150; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s;}
   .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
 
   .tabbar{position:fixed; left:0; right:0; bottom:0; max-width:480px; margin:0 auto; z-index:30; flex-shrink:0; border-top:1px solid var(--border); background:var(--bg); display:flex; padding-bottom:env(safe-area-inset-bottom);}
@@ -276,7 +284,7 @@
   .font-card-canvas.mini .font-card-main{font-size:20px !important; line-height:1.25; max-height:100%; overflow:hidden; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;}
   /* editor live-preview stage: capped height + scrollable so a large
      configured font size can't push the rest of the form off-screen. */
-  .font-card-stage{padding:4px 0 4px; position:sticky; top:0; z-index:5; background:var(--bg); position:relative;}
+  .font-card-stage{padding:4px 0 4px; position:sticky; top:0; z-index:5; background:var(--bg);}
   .font-card-stage .font-card-canvas{max-height:260px; overflow-y:auto;}
   .stage-expand-btn{position:absolute; top:14px; right:14px; z-index:6; width:32px; height:32px; border-radius:50%; background:rgba(255,255,255,.85); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--text); backdrop-filter:blur(4px);}
   .stage-expand-btn svg{width:15px; height:15px;}
@@ -291,7 +299,7 @@
   /* font lightbox: tap a font card in any list to see it big, without navigating */
   .font-lightbox-mask{position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:75; display:none; align-items:center; justify-content:center; padding:28px;}
   .font-lightbox-mask.show{display:flex;}
-  .font-lightbox-card{width:100%; max-width:340px; max-height:82vh; overflow-y:auto; background:var(--bg); border-radius:18px; overflow:hidden; box-shadow:0 24px 60px rgba(0,0,0,.35); transform:scale(.94); opacity:0; transition:transform .18s cubic-bezier(.2,.8,.4,1), opacity .18s ease;}
+  .font-lightbox-card{width:100%; max-width:340px; max-height:82vh; overflow-x:hidden; overflow-y:auto; background:var(--bg); border-radius:18px; box-shadow:0 24px 60px rgba(0,0,0,.35); transform:scale(.94); opacity:0; transition:transform .18s cubic-bezier(.2,.8,.4,1), opacity .18s ease;}
   .font-lightbox-mask.show .font-lightbox-card{transform:scale(1); opacity:1;}
   .font-lightbox-body{padding:16px;}
   .font-lightbox-name{font-family:'Newsreader', Georgia, serif; font-style:italic; font-size:16px; margin-top:12px;}
@@ -777,12 +785,38 @@ const $ = id => document.getElementById(id);
   });
 })();
 const uid = () => Math.random().toString(36).slice(2,10);
-function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// 必须连引号一起转义：esc 的结果大量出现在 value="..." / src="..." 里，
+// 只转 & < > 的话，一条带引号的图片 URL 就能挂上自己的 onerror 拿到登录态。
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+/* ===================== small helpers ===================== */
+// 用在 CSS url(...) 里：去掉能提前闭合 url() 或字符串的字符，防止样式注入
+function cssUrlSafe(u){ return String(u==null?'':u).replace(/[)'"\\\s]/g,''); }
+function safeFilename(s){ return String(s==null?'':s).replace(/[\\/:*?"<>|\r\n]/g,'_').trim() || '未命名'; }
+// 按亮度判断深色背景，别再只硬编码 #000000 / #333333
+function isDarkColor(hex){
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(hex==null?'':hex).trim());
+  if(!m) return false;
+  let h = m[1];
+  if(h.length===3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  const r=parseInt(h.slice(0,2),16), g=parseInt(h.slice(2,4),16), b=parseInt(h.slice(4,6),16);
+  return (0.2126*r + 0.7152*g + 0.0722*b) < 140;
+}
+function hashStr(s){ let h=5381; for(let i=0;i<s.length;i++) h=((h<<5)+h+s.charCodeAt(i))>>>0; return h.toString(36); }
 
 /* ===================== supabase client ===================== */
 const SUPABASE_URL = 'https://mejkhrxqdlybfatzecsc.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_21TWA4F0KgENzkYF7TopFA_0G8mrbay';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const sb = (function(){
+  // 依赖挂了就直接停在这里给提示。否则后面每一处 sb.xxx 都会抛错，
+  // 用户看到的只是一个永远转不完的圈。
+  if(typeof supabase === 'undefined' || !supabase.createClient){
+    document.getElementById('loadingOverlay').innerHTML =
+      '<p class="hint" style="text-align:center; padding:0 24px;">核心依赖没能加载完（网络问题，或者 CDN 被拦截了）<br>请检查网络后刷新重试。</p>';
+    throw new Error('supabase-js 未加载');
+  }
+  return supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+})();
 
 /* ===================== state ===================== */
 let currentUserId = null;
@@ -812,8 +846,13 @@ async function initAuth(){
     const { data: profile, error: pErr } = await sb.from('users').select('*').eq('id', currentUserId).maybeSingle();
     if(pErr) throw pErr;
     if(!profile){
+      // 有登录状态但没资料：上次注册成功、兑换邀请码失败。
+      // 直接引导补填邀请码，别让人重新注册（会撞"账号已被使用"卡死）。
       $('loadingOverlay').style.display = 'none';
       $('joinOverlay').classList.add('open');
+      setAuthMode('signup');
+      $('joinUsernameInput').value = String(session.user.email||'').replace(AUTH_EMAIL_SUFFIX,'');
+      showJoinError('账号已创建但还没加入，填入邀请码后点「注册并加入」即可');
       return;
     }
     applyProfile(profile);
@@ -830,15 +869,14 @@ function applyProfile(profile){
   avatarDataUrl = profile.avatar_url || null;
 }
 
+function setAuthMode(mode){
+  document.querySelectorAll('#authModeChips .chip').forEach(x=>x.classList.toggle('active', x.dataset.mode===mode));
+  $('loginFields').style.display = mode==='login' ? 'block' : 'none';
+  $('signupFields').style.display = mode==='signup' ? 'block' : 'none';
+  $('joinError').style.display = 'none';
+}
 document.querySelectorAll('#authModeChips .chip').forEach(b=>{
-  b.addEventListener('click', ()=>{
-    document.querySelectorAll('#authModeChips .chip').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    const mode = b.dataset.mode;
-    $('loginFields').style.display = mode==='login' ? 'block' : 'none';
-    $('signupFields').style.display = mode==='signup' ? 'block' : 'none';
-    $('joinError').style.display = 'none';
-  });
+  b.addEventListener('click', ()=> setAuthMode(b.dataset.mode));
 });
 
 $('loginSubmitBtn').addEventListener('click', async ()=>{
@@ -872,20 +910,38 @@ $('joinSubmitBtn').addEventListener('click', async ()=>{
   if(!nickname){ showJoinError('请给自己起个昵称'); return; }
   $('joinSubmitBtn').disabled = true; $('joinSubmitBtn').textContent = '注册中…';
   try{
-    const { data: signUpData, error: signUpErr } = await sb.auth.signUp({ email: usernameToEmail(username), password });
-    if(signUpErr){
-      if(/already registered|already exists/i.test(signUpErr.message)) throw new Error('这个账号已经被使用了，换一个试试');
-      throw signUpErr;
+    const email = usernameToEmail(username);
+    // 关键：账号可能上一次已经建好了（只是邀请码没兑换成功）。
+    // 这种情况必须复用已有账号，重新 signUp 只会报"已被使用"，让人再也进不来。
+    let { data:{ session } } = await sb.auth.getSession();
+    if(session && session.user.email !== email){ await sb.auth.signOut(); session = null; }
+    if(!session){
+      const { data: signUpData, error: signUpErr } = await sb.auth.signUp({ email, password });
+      if(signUpErr){
+        if(/already registered|already exists|user already/i.test(signUpErr.message)){
+          // 账号已存在：用密码登进去继续兑换邀请码
+          const { data: signInData, error: signInErr } = await sb.auth.signInWithPassword({ email, password });
+          if(signInErr) throw new Error('这个账号已经被使用了，换一个试试');
+          session = signInData.session;
+        } else throw signUpErr;
+      } else {
+        if(!signUpData.session) throw new Error('注册后没有拿到登录状态——请去 Supabase 后台 Authentication 设置里关闭"Confirm email"');
+        session = signUpData.session;
+      }
     }
-    if(!signUpData.session){
-      throw new Error('注册后没有拿到登录状态——请去 Supabase 后台 Authentication 设置里关闭"Confirm email"');
-    }
-    currentUserId = signUpData.session.user.id;
+    currentUserId = session.user.id;
     const { data, error } = await sb.rpc('redeem_invite', { invite_code: code, new_nickname: nickname });
     if(error) throw error;
-    if(!data.ok){
-      const msgs = {invite_not_found:'邀请码不存在', invite_already_used:'邀请码已被使用', already_joined:'你已经加入过了', nickname_required:'请填写昵称', not_authenticated:'登录状态异常，请刷新页面重试'};
-      throw new Error(msgs[data.error] || '加入失败，请重试');
+    if(!data || !data.ok){
+      if(data && data.error === 'already_joined'){
+        // 已经加入过了，直接进去就好，不用报错
+        $('joinOverlay').classList.remove('open');
+        $('loadingOverlay').style.display = 'flex';
+        await initAuth();
+        return;
+      }
+      const msgs = {invite_not_found:'邀请码不存在', invite_already_used:'邀请码已被使用', nickname_required:'请填写昵称', not_authenticated:'登录状态异常，请刷新页面重试'};
+      throw new Error((data && msgs[data.error]) || '加入失败，请重试');
     }
     $('joinOverlay').classList.remove('open');
     $('loadingOverlay').style.display = 'flex';
@@ -898,26 +954,41 @@ $('joinSubmitBtn').addEventListener('click', async ()=>{
 });
 
 /* ===================== remote data loading ===================== */
+// PostgREST 单次请求默认最多 1000 行。不分页的话作品一多，
+// 靠后的合集会静默地少掉表情，所以这里统一拉完。
+const PAGE_SIZE = 1000;
+async function fetchAllRows(makeQuery){
+  let out = [], from = 0;
+  for(;;){
+    const { data, error } = await makeQuery().range(from, from + PAGE_SIZE - 1);
+    if(error) return { data: out, error };
+    out = out.concat(data || []);
+    if(!data || data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return { data: out, error: null };
+}
+function chunkArray(arr, size){
+  const out = [];
+  for(let i=0;i<arr.length;i+=size) out.push(arr.slice(i, i+size));
+  return out;
+}
 async function loadCollections(){
-  const { data: cols, error } = await sb.from('collections_with_stats').select('*').order('created_at', {ascending:false});
+  // 第二排序键保证翻页稳定，否则 created_at 相同的行可能重复或漏掉
+  const { data: cols, error } = await fetchAllRows(()=> sb.from('collections_with_stats').select('*')
+    .order('created_at', {ascending:false}).order('id', {ascending:true}));
   if(error){ showToast('加载作品失败：'+error.message); return; }
   const ids = (cols||[]).map(c=>c.id);
-  let byCollection = {};
-  let sourceById = {};
-  if(ids.length){
-    const { data: emojis, error: eErr } = await sb.from('emojis')
+  const byCollection = {};
+  for(const chunk of chunkArray(ids, 100)){
+    const { data: emojis, error: eErr } = await fetchAllRows(()=> sb.from('emojis')
       .select('id, collection_id, description, sort_order, source, image_assets(source_url)')
-      .in('collection_id', ids)
-      .order('sort_order', {ascending:true});
-    if(eErr){ showToast('加载表情失败：'+eErr.message); }
+      .in('collection_id', chunk)
+      .order('sort_order', {ascending:true}).order('id', {ascending:true}));
+    if(eErr){ showToast('加载表情失败：'+eErr.message); continue; }
     (emojis||[]).forEach(e=>{
       (byCollection[e.collection_id] ||= []).push({ id:e.id, url:(e.image_assets&&e.image_assets.source_url)||'', desc:e.description, source:e.source||'' });
     });
-
-    // collections_with_stats 视图大概率没把 source 带出来，这里单独兜底查一次基础表
-    const { data: srcRows, error: srcErr } = await sb.from('collections').select('id, source').in('id', ids);
-    if(srcErr){ console.warn('兜底查询来源失败：', srcErr.message); }
-    (srcRows||[]).forEach(r=>{ sourceById[r.id] = r.source; });
   }
   collections = (cols||[]).map(c=>({
     id: c.id,
@@ -926,18 +997,21 @@ async function loadCollections(){
     authorId: c.user_id,
     authorAvatarUrl: c.author_avatar_url || null,
     category: c.category,
-    source: (sourceById[c.id] ?? c.source) || '',
-    likeCount: c.like_count,
+    source: c.source || '',
+    likeCount: c.like_count || 0,
     emojis: byCollection[c.id] || [],
     createdAt: new Date(c.created_at).getTime(),
   }));
 }
-
 async function loadMyLikesFavorites(){
-  const { data: likeRows } = await sb.from('likes').select('collection_id, font_id').eq('user_id', currentUserId);
-  liked = new Set((likeRows||[]).flatMap(r=>[r.collection_id, r.font_id].filter(Boolean)));
-  const { data: favRows } = await sb.from('favorites').select('collection_id, font_id').eq('user_id', currentUserId);
-  favorited = new Set((favRows||[]).flatMap(r=>[r.collection_id, r.font_id].filter(Boolean)));
+  // (collection_id, font_id) 在单个用户下唯一，用它做排序键翻页才稳
+  const ordered = q => q.order('collection_id', {ascending:true, nullsFirst:true}).order('font_id', {ascending:true, nullsFirst:true});
+  const { data: likeRows, error: lErr } = await fetchAllRows(()=> ordered(sb.from('likes').select('collection_id, font_id').eq('user_id', currentUserId)));
+  if(lErr) showToast('加载点赞失败：'+lErr.message);
+  else liked = new Set((likeRows||[]).flatMap(r=>[r.collection_id, r.font_id].filter(Boolean)));
+  const { data: favRows, error: fErr } = await fetchAllRows(()=> ordered(sb.from('favorites').select('collection_id, font_id').eq('user_id', currentUserId)));
+  if(fErr) showToast('加载收藏失败：'+fErr.message);
+  else favorited = new Set((favRows||[]).flatMap(r=>[r.collection_id, r.font_id].filter(Boolean)));
 }
 async function loadAppData(){
   await Promise.all([loadCollections(), loadMyLikesFavorites(), loadFonts()]);
@@ -964,11 +1038,18 @@ async function silentRefresh(force){
   refreshInFlight = true;
   const scroller = document.querySelector('.page-scroll');
   const scrollPos = scroller ? scroller.scrollTop : 0;
-  await Promise.all([loadCollections(), loadMyLikesFavorites(), loadFonts()]);
-  renderProfileBits();
-  renderAll();
-  if(scroller) scroller.scrollTop = scrollPos;
-  refreshInFlight = false;
+  try{
+    await Promise.all([loadCollections(), loadMyLikesFavorites(), loadFonts()]);
+    renderProfileBits();
+    renderAll();
+    if(scroller) scroller.scrollTop = scrollPos;
+  }catch(err){
+    // 这里必须吞掉异常并复位 refreshInFlight，否则一次失败之后
+    // 自动刷新和刷新按钮就永久失效了
+    console.warn('刷新失败：', err);
+  }finally{
+    refreshInFlight = false;
+  }
 }
 function startAutoRefresh(){
   if(autoRefreshTimer) clearInterval(autoRefreshTimer);
@@ -981,10 +1062,14 @@ document.addEventListener('visibilitychange', ()=>{
 });
 $('homeRefreshBtn').addEventListener('click', async ()=>{
   if(refreshInFlight) return;
-  $('homeRefreshBtn').classList.add('spinning');
-  await silentRefresh(true);
-  $('homeRefreshBtn').classList.remove('spinning');
-  showToast('已刷新');
+  const btn = $('homeRefreshBtn');
+  btn.classList.add('spinning');
+  try{
+    await silentRefresh(true);
+    showToast('已刷新');
+  }finally{
+    btn.classList.remove('spinning');
+  }
 });
 
 /* ===================== remote mutations ===================== */
@@ -994,39 +1079,94 @@ async function createCollectionRemote(title, category, items, source){
   const { data: assets, error: aErr } = await sb.from('image_assets')
     .insert(items.map(it=>({ source_type:'external_url', source_url: it.url.trim() }))).select();
   if(aErr){ showToast('图片保存失败：'+aErr.message); return false; }
+  if(!assets || assets.length !== items.length){ showToast('图片保存数量不对，请重试'); return false; }
   const emojiRows = items.map((it,i)=>({ collection_id: coll.id, image_asset_id: assets[i].id, description: it.desc.trim()||'未命名', sort_order:i, source: it.source ? it.source.trim() : null }));
   const { error: eErr } = await sb.from('emojis').insert(emojiRows);
   if(eErr){ showToast('保存表情失败：'+eErr.message); return false; }
   return true;
 }
+// 注意：下面这套是"尽力而为"的补偿式回滚。真正干净的做法是把整段
+// 挪进一个 Postgres 函数里用事务跑，客户端只调一次 RPC。
 async function updateCollectionRemote(id, title, category, items, source){
   const { error: uErr } = await sb.from('collections').update({ title, category, source: source||null }).eq('id', id);
   if(uErr){ showToast('保存失败：'+uErr.message); return false; }
-  const { error: dErr } = await sb.from('emojis').delete().eq('collection_id', id);
-  if(dErr){ showToast('保存失败：'+dErr.message); return false; }
+
+  // 1) 先完整读出旧表情，失败时用来还原
+  const { data: oldEmojis, error: oldErr } = await sb.from('emojis').select('*').eq('collection_id', id);
+  if(oldErr){ showToast('保存失败：'+oldErr.message); return false; }
+  const oldAssetIds = (oldEmojis||[]).map(e=>e.image_asset_id).filter(Boolean);
+
+  // 2) 先插新图片资源（这一步不破坏任何现有数据）
   const { data: assets, error: aErr } = await sb.from('image_assets')
     .insert(items.map(it=>({ source_type:'external_url', source_url: it.url.trim() }))).select();
   if(aErr){ showToast('图片保存失败：'+aErr.message); return false; }
+  if(!assets || assets.length !== items.length){ showToast('图片保存数量不对，请重试'); return false; }
+  const newAssetIds = assets.map(a=>a.id);
+
+  // 3) 删旧表情
+  const { error: dErr } = await sb.from('emojis').delete().eq('collection_id', id);
+  if(dErr){
+    await sb.from('image_assets').delete().in('id', newAssetIds);
+    showToast('保存失败：'+dErr.message);
+    return false;
+  }
+
+  // 4) 插新表情；失败就把旧的塞回去，别让内容凭空消失
   const emojiRows = items.map((it,i)=>({ collection_id:id, image_asset_id: assets[i].id, description: it.desc.trim()||'未命名', sort_order:i, source: it.source ? it.source.trim() : null }));
   const { error: eErr } = await sb.from('emojis').insert(emojiRows);
-  if(eErr){ showToast('保存表情失败：'+eErr.message); return false; }
+  if(eErr){
+    let restored = false;
+    if(oldEmojis && oldEmojis.length){
+      const { error: rErr } = await sb.from('emojis').insert(oldEmojis);
+      restored = !rErr;
+    }
+    await sb.from('image_assets').delete().in('id', newAssetIds);
+    showToast(restored ? '保存表情失败，已还原成修改前的内容' : '保存表情失败：'+eErr.message);
+    return false;
+  }
+
+  // 5) 新数据落地后再清旧图片资源，清理失败不影响本次保存
+  if(oldAssetIds.length){
+    const { error: cleanErr } = await sb.from('image_assets').delete().in('id', oldAssetIds);
+    if(cleanErr) console.warn('清理旧图片资源失败（不影响本次保存）：', cleanErr.message);
+  }
+
   return true;
 }
 async function deleteCollectionRemote(id){
+  // 先记下图片资源 id，否则合集删掉之后就查不到、只能留成孤儿行
+  const { data: oldEmojis } = await sb.from('emojis').select('image_asset_id').eq('collection_id', id);
+  const assetIds = (oldEmojis||[]).map(e=>e.image_asset_id).filter(Boolean);
   const { error } = await sb.from('collections').delete().eq('id', id);
   if(error){ showToast('删除失败：'+error.message); return false; }
+  if(assetIds.length){
+    const { error: cleanErr } = await sb.from('image_assets').delete().in('id', assetIds);
+    if(cleanErr) console.warn('清理图片资源失败（不影响删除）：', cleanErr.message);
+  }
   return true;
+}
+// 点赞数直接改本地对象，渲染时就不用再 "+1" 了。
+// 之前那种 likeCount + (自己点了?1:0) 只有在视图排除了自己时才对，
+// 否则会重复计数，而且每次后台刷新数字都会跳一下。
+function bumpLikeCount(id, isFont, delta){
+  if(isFont){
+    const f = fonts.find(x=>x.id===id);
+    if(f) f.like_count = Math.max(0, (f.like_count||0) + delta);
+  } else {
+    const c = collections.find(x=>x.id===id);
+    if(c) c.likeCount = Math.max(0, (c.likeCount||0) + delta);
+  }
 }
 async function toggleLikeRemote(id, isFont){
   const col = isFont ? 'font_id' : 'collection_id';
   if(liked.has(id)){
-    liked.delete(id);
+    liked.delete(id); bumpLikeCount(id, isFont, -1);
     const { error } = await sb.from('likes').delete().eq('user_id', currentUserId).eq(col, id);
-    if(error){ liked.add(id); showToast('操作失败：'+error.message); }
+    if(error){ liked.add(id); bumpLikeCount(id, isFont, 1); showToast('操作失败：'+error.message); }
   } else {
-    liked.add(id);
+    liked.add(id); bumpLikeCount(id, isFont, 1);
     const { error } = await sb.from('likes').insert({ user_id: currentUserId, [col]: id });
-    if(error){ liked.delete(id); showToast('操作失败：'+error.message); }
+    if(error){ liked.delete(id); bumpLikeCount(id, isFont, -1); showToast('操作失败：'+error.message); }
   }
 }
 async function toggleFavoriteRemote(id, isFont){
@@ -1047,7 +1187,8 @@ async function saveProfileRemote(nickname, status, avatar){
   return true;
 }
 async function loadFonts(){
-  const { data, error } = await sb.from('fonts_with_author').select('*').order('created_at', {ascending:false});
+  const { data, error } = await fetchAllRows(()=> sb.from('fonts_with_author').select('*')
+    .order('created_at', {ascending:false}).order('id', {ascending:true}));
   if(error){ showToast('加载字体失败：'+error.message); return; }
   fonts = data || [];
 }
@@ -1118,6 +1259,7 @@ function waitForCardImages(node){
   }));
 }
 async function renderCardToBlob(node){
+  if(typeof html2canvas === 'undefined') throw new Error('图片生成组件没加载成功，刷新页面再试');
   document.body.appendChild(node);
   try{
     await waitForCardImages(node);
@@ -1319,24 +1461,49 @@ $('cropConfirmBtn').addEventListener('click', async ()=>{
   const srcX = -viewLeft / cropState.scale;
   const srcY = -viewTop / cropState.scale;
   const srcSize = CROP_VIEWPORT / cropState.scale;
-  function toDataUrl(outSize, quality){
+  function drawTo(outSize){
     const canvas = document.createElement('canvas');
     canvas.width = outSize; canvas.height = outSize;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, srcX, srcY, srcSize, srcSize, 0, 0, outSize, outSize);
-    return canvas.toDataURL('image/jpeg', quality);
+    canvas.getContext('2d').drawImage(img, srcX, srcY, srcSize, srcSize, 0, 0, outSize, outSize);
+    return canvas;
   }
-  const hdDataUrl = toDataUrl(512, 0.88);      // stays only in this browser, never synced
-  const smallDataUrl = toDataUrl(220, 0.72);   // small compressed copy, synced to everyone
+  const toDataUrl = (outSize, quality) => drawTo(outSize).toDataURL('image/jpeg', quality);
+  const toBlob = (outSize, quality) => new Promise(res => drawTo(outSize).toBlob(res, 'image/jpeg', quality));
 
+  const hdDataUrl = toDataUrl(512, 0.88);   // 只留在本机，不上传
   if(currentUserId){ try{ localStorage.setItem('zhp_avatar_hd_'+currentUserId, hdDataUrl); }catch(e){} }
-  avatarDataUrl = smallDataUrl;
+
+  const btn = $('cropConfirmBtn');
+  btn.disabled = true; btn.textContent = '上传中…';
+
+  // 优先传 Storage，库里只存一个 URL；桶还没建好就退回原来的内嵌方式，
+  // 这样没跑加固脚本时功能照常可用。
+  let newAvatar = null, usedStorage = false;
+  try{
+    const blob = await toBlob(256, 0.82);
+    if(!blob) throw new Error('图片编码失败');
+    const path = `${currentUserId}/avatar.jpg`;
+    const { error: upErr } = await sb.storage.from('avatars')
+      .upload(path, blob, { upsert:true, contentType:'image/jpeg', cacheControl:'3600' });
+    if(upErr) throw upErr;
+    const { data } = sb.storage.from('avatars').getPublicUrl(path);
+    if(!data || !data.publicUrl) throw new Error('拿不到公开链接');
+    newAvatar = data.publicUrl + '?v=' + Date.now();   // 覆盖上传后要绕开缓存
+    usedStorage = true;
+  }catch(e){
+    console.warn('头像上传 Storage 失败，退回内嵌 data URL：', e);
+    newAvatar = toDataUrl(128, 0.68);
+  }
+
+  avatarDataUrl = newAvatar;
   renderProfileBits();
   $('avatarCropMask').classList.remove('open');
   cropTargetImage = null;
   const ok = await saveProfileRemote(currentUser, statusMessage, avatarDataUrl);
+  btn.disabled = false; btn.textContent = '确认裁剪';
   if(ok){ await loadCollections(); await loadFonts(); renderAll(); }
-  showToast(ok ? '头像已更新' : '头像已更新（同步失败，刷新会丢失）');
+  if(!ok) showToast('头像已更新（同步失败，刷新会丢失）');
+  else showToast(usedStorage ? '头像已更新' : '头像已更新（未走 Storage，建议跑一下加固脚本）');
 });
 
 /* ===================== edit profile sheet ===================== */
@@ -1396,6 +1563,7 @@ function parseLine(raw){
 
 /* ===================== docx read/write ===================== */
 async function readDocxText(file){
+  if(typeof JSZip === 'undefined') throw new Error('docx 组件没加载成功，刷新页面再试');
   const buf = await file.arrayBuffer();
   const zip = await JSZip.loadAsync(buf);
   const xml = await zip.file('word/document.xml').async('string');
@@ -1410,6 +1578,7 @@ async function readDocxText(file){
   return lines.join('\n');
 }
 async function buildDocxBlob(text){
+  if(typeof JSZip === 'undefined') throw new Error('docx 组件没加载成功，刷新页面再试');
   const lines = text.split('\n');
   const paras = lines.map(l=>`<w:p><w:r><w:t xml:space="preserve">${esc(l)}</w:t></w:r></w:p>`).join('');
   const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${paras}<w:sectPr/></w:body></w:document>`;
@@ -1473,7 +1642,7 @@ function collCardHtml(c){
     ${coverHtml(c.emojis)}
     <div class="coll-name">${esc(c.title)}</div>
     <div class="coll-sub">${esc(c.author)} · ${esc(c.category)}</div>
-    <div class="coll-stats"><span>${c.emojis.length} 个表情</span><span>${heartIcon()}${c.likeCount + (liked.has(c.id)?1:0)}</span></div>
+    <div class="coll-stats"><span>${c.emojis.length} 个表情</span><span>${heartIcon()}${c.likeCount}</span></div>
   </button>`;
 }
 function fontBrowseCardHtml(f){
@@ -1481,17 +1650,20 @@ function fontBrowseCardHtml(f){
     ${fontCanvasHtml(f, true)}
     <div class="coll-name">${esc(f.name)}</div>
     <div class="coll-sub">${esc(f.author_nickname)} · ${esc(f.category||'')}</div>
-    <div class="coll-stats"><span>${heartIcon()}${(f.like_count||0) + (liked.has(f.id)?1:0)}</span></div>
+    <div class="coll-stats"><span>${heartIcon()}${f.like_count||0}</span></div>
   </button>`;
 }
 function emptyStateHtml(text, action){
-  const btn = action ? `<button class="btn-outline" id="emptyActionBtn">${esc(action.label)}</button>` : '';
+  const btn = action ? `<button class="btn-outline empty-action">${esc(action.label)}</button>` : '';
   return `<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/><circle cx="8.5" cy="8.5" r="1.2"/></svg><p>${esc(text)}</p>${btn}</div>`;
 }
 function renderItemsGrid(container, items, emptyText, action){
   if(!items.length){
     container.innerHTML = emptyStateHtml(emptyText || '这里还没有内容', action);
-    const btn = $('emptyActionBtn'); if(btn && action) btn.addEventListener('click', action.onClick);
+    // 必须在 container 里找。多个空列表同时渲染时（新用户的收藏页 + 我的页），
+    // 全局 id 只会命中文档里第一个，事件就挂错按钮了。
+    const btn = container.querySelector('.empty-action');
+    if(btn && action) btn.addEventListener('click', action.onClick);
     return;
   }
   container.innerHTML = `<div class="coll-grid">${items.map(it=> it.type==='font' ? fontBrowseCardHtml(it.data) : collCardHtml(it.data)).join('')}</div>`;
@@ -1525,7 +1697,7 @@ function showPeek(id){
         <div class="peek-author">${esc(c.author)}</div>
       </div>
       <div class="peek-title">${esc(c.title)}</div>
-      <div class="peek-stats"><span>${c.emojis.length} 个表情</span><span>${heartIcon()}${c.likeCount + (liked.has(c.id)?1:0)}</span></div>
+      <div class="peek-stats"><span>${c.emojis.length} 个表情</span><span>${heartIcon()}${c.likeCount}</span></div>
     </div>
   `;
   $('peekMask').classList.add('show');
@@ -1547,18 +1719,16 @@ document.querySelectorAll('#homeTypeToggle button').forEach(b=>{
 function renderHome(){
   const q = $('homeSearch').value.trim().toLowerCase();
   let items;
-  if(q){
-    const collItems = collections
-      .filter(c => c.title.toLowerCase().includes(q) || c.category.toLowerCase().includes(q) || c.emojis.some(e=>e.desc.toLowerCase().includes(q)))
-      .map(c=>({type:'collection', data:c, sortKey: homeSort==='hot' ? c.likeCount : c.createdAt}));
-    const fontItems = fonts
-      .filter(f => f.name.toLowerCase().includes(q) || (f.category||'').toLowerCase().includes(q) || (f.display_text||'').toLowerCase().includes(q))
-      .map(f=>({type:'font', data:f, sortKey: homeSort==='hot' ? (f.like_count||0) : new Date(f.created_at).getTime()}));
-    items = [...collItems, ...fontItems];
-  } else if(homeMode==='fonts'){
-    items = fonts.map(f=>({type:'font', data:f, sortKey: homeSort==='hot' ? (f.like_count||0) : new Date(f.created_at).getTime()}));
+  // 搜索时也要跟着上面的「表情包 / 字体」切换走，
+  // 否则搜索状态下点切换毫无反应，很困惑
+  if(homeMode==='fonts'){
+    let list = fonts;
+    if(q) list = list.filter(f => f.name.toLowerCase().includes(q) || (f.category||'').toLowerCase().includes(q) || (f.display_text||'').toLowerCase().includes(q));
+    items = list.map(f=>({type:'font', data:f, sortKey: homeSort==='hot' ? (f.like_count||0) : new Date(f.created_at).getTime()}));
   } else {
-    items = collections.map(c=>({type:'collection', data:c, sortKey: homeSort==='hot' ? c.likeCount : c.createdAt}));
+    let list = collections;
+    if(q) list = list.filter(c => c.title.toLowerCase().includes(q) || c.category.toLowerCase().includes(q) || c.emojis.some(e=>e.desc.toLowerCase().includes(q)));
+    items = list.map(c=>({type:'collection', data:c, sortKey: homeSort==='hot' ? c.likeCount : c.createdAt}));
   }
   items.sort((a,b)=>b.sortKey-a.sortKey);
   renderItemsGrid($('homeGrid'), items, q ? '没有找到相关内容，换个关键词试试' : (homeMode==='fonts'?'还没有字体':'还没有作品'));
@@ -1680,7 +1850,7 @@ function renderDetail(justToggled){
       <div class="detail-title">${esc(c.title)}</div>
       <div class="detail-sub">${esc(c.author)} · ${esc(c.category)} · ${c.emojis.length} 个表情${c.source?` · 来源：${esc(c.source)}`:''}</div>
       <div class="action-row">
-        <button class="action-btn ${isLiked?'active':''}" id="likeBtn">${heartIcon()}<span>${c.likeCount + (isLiked?1:0)}</span></button>
+        <button class="action-btn ${isLiked?'active':''}" id="likeBtn">${heartIcon()}<span>${c.likeCount}</span></button>
         <button class="action-btn ${isFav?'active':''}" id="favBtn">${bookmarkIcon()}<span>${isFav?'已收藏':'收藏'}</span></button>
         <button class="action-btn" id="shareCollBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg><span>分享</span></button>
         <button class="action-btn" id="reportCollBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22V15"/></svg><span>举报</span></button>
@@ -1702,7 +1872,7 @@ function renderDetail(justToggled){
     openShareSheet({
       title: c.title,
       link: `${location.origin}${location.pathname}?collection=${c.id}`,
-      filename: `${c.title||'表情包'}.png`,
+      filename: `${safeFilename(c.title||'表情包')}.png`,
       buildCardNode: ()=>buildCollShareCardNode(c),
     });
   });
@@ -1723,7 +1893,10 @@ function renderDetail(justToggled){
   if(justToggled==='like') requestAnimationFrame(()=>{ const b=$('likeBtn'); if(b) b.classList.add('pop'); });
   if(justToggled==='fav') requestAnimationFrame(()=>{ const b=$('favBtn'); if(b) b.classList.add('pop'); });
 }
-document.addEventListener('contextmenu', e=>{ if(e.target.tagName==='IMG') e.preventDefault(); });
+// 只拦卡片封面（防止误触发拖拽/存图），详情页里的表情图仍然可以长按保存
+document.addEventListener('contextmenu', e=>{
+  if(e.target.tagName==='IMG' && e.target.closest('.coll-card, .peek-card, .font-lightbox-card')) e.preventDefault();
+});
 
 /* ===================== edit own collection: reuse the full Publish page tooling ===================== */
 let editingCollectionId = null;
@@ -1859,10 +2032,9 @@ function openDownloadSheet(c){
       $('dlCopyBtn').addEventListener('click', async ()=>{
         try{ await navigator.clipboard.writeText(currentText()); showToast('已复制'); }catch(e){ showToast('复制失败'); }
       });
-      $('dlTxtBtn').addEventListener('click', ()=> downloadBlob(new Blob(['\ufeff'+currentText()],{type:'text/plain;charset=utf-8'}), `${c.title}_${c.author}.txt`));
-
+      $('dlTxtBtn').addEventListener('click', ()=> downloadBlob(new Blob([currentText()],{type:'text/plain;charset=utf-8'}), `${safeFilename(c.title)}_${safeFilename(c.author)}.txt`));
       $('dlDocxBtn').addEventListener('click', async ()=>{
-        try{ downloadBlob(await buildDocxBlob(currentText()), `${c.title}_${c.author}.docx`); }
+        try{ downloadBlob(await buildDocxBlob(currentText()), `${safeFilename(c.title)}_${safeFilename(c.author)}.docx`); }
         catch(e){ showToast('生成 docx 失败'); }
       });
     }
@@ -1887,26 +2059,30 @@ let batchMode = false;
 let batchSelected = new Set();
 
 let dragItemId = null;
+let dragListEl = null;
 let dragLongPressTimer = null;
 let dragActive = false;
-function startRowDrag(itemId){
+// 拖动必须限定在触发的那个列表里：发布页和 AI 弹层渲染的是同一批
+// .row-item[data-id]，用 document 全局查会命中底下那份，反馈全跑偏。
+function startRowDrag(itemId, listEl){
   dragItemId = itemId;
+  dragListEl = listEl || document;
   dragActive = false;
   clearTimeout(dragLongPressTimer);
   dragLongPressTimer = setTimeout(()=>{
     dragActive = true;
-    const row = document.querySelector(`.row-item[data-id="${itemId}"]`);
+    const row = dragListEl.querySelector(`.row-item[data-id="${itemId}"]`);
     if(row) row.classList.add('dragging');
     if(navigator.vibrate) navigator.vibrate(10);
   }, 350);
   document.addEventListener('pointermove', onRowDragMove);
-  document.addEventListener('pointerup', endRowDrag, {once:true});
-  document.addEventListener('pointercancel', endRowDrag, {once:true});
+  document.addEventListener('pointerup', endRowDrag);
+  document.addEventListener('pointercancel', endRowDrag);
 }
 function onRowDragMove(e){
   if(!dragActive || !dragItemId) return;
   let targetRow = null;
-  document.querySelectorAll('.row-item').forEach(r=>{
+  dragListEl.querySelectorAll('.row-item[data-id]').forEach(r=>{
     const rect = r.getBoundingClientRect();
     if(rect.width && e.clientY >= rect.top && e.clientY <= rect.bottom) targetRow = r;
   });
@@ -1917,7 +2093,7 @@ function onRowDragMove(e){
       const [moved] = pubItems.splice(fromIdx,1);
       pubItems.splice(toIdx,0,moved);
       renderPubItems();
-      const row = document.querySelector(`.row-item[data-id="${dragItemId}"]`);
+      const row = dragListEl.querySelector(`.row-item[data-id="${dragItemId}"]`);
       if(row) row.classList.add('dragging');
     }
   }
@@ -1925,8 +2101,11 @@ function onRowDragMove(e){
 function endRowDrag(){
   clearTimeout(dragLongPressTimer);
   document.removeEventListener('pointermove', onRowDragMove);
+  document.removeEventListener('pointerup', endRowDrag);
+  document.removeEventListener('pointercancel', endRowDrag);
   document.querySelectorAll('.row-item.dragging').forEach(r=>r.classList.remove('dragging'));
   dragItemId = null;
+  dragListEl = null;
   dragActive = false;
 }
 
@@ -1979,7 +2158,7 @@ function renderItemsList(wrap){
     });
   } else {
     wrap.querySelectorAll('[data-draghandle]').forEach(handle=>{
-      handle.addEventListener('pointerdown', e=>{ e.preventDefault(); startRowDrag(handle.dataset.draghandle); });
+      handle.addEventListener('pointerdown', e=>{ e.preventDefault(); startRowDrag(handle.dataset.draghandle, wrap); });
     });
     wrap.querySelectorAll('[data-del]').forEach(btn=>{
       btn.addEventListener('click', ()=>{
@@ -2104,7 +2283,8 @@ function createImportWidget(ids){
   addBtn.addEventListener('click', ()=>{
     const valid = rows.filter(r=>r.url && !r.error);
     if(!valid.length){ showToast('没有可导入的内容'); return; }
-    const fresh = pubItems.filter(it=>it.url.trim());
+    // 只填了描述、还没填链接的那行也要留着，别默默吞掉用户输入
+    const fresh = pubItems.filter(it=>it.url.trim() || it.desc.trim());
     pubItems = [...fresh, ...valid.map(r=>({id:uid(), url:r.url, desc:r.desc||'', status:'idle', source:''}))];
     if(!pubItems.length) pubItems=[{id:uid(),url:'',desc:'',status:'idle',source:''}];
     renderPubItems();
@@ -2332,6 +2512,12 @@ $('pubSubmitBtn').addEventListener('click', ()=>{
 
 function openPublishSheet(){
   const editing = collections.find(c=>c.id===editingCollectionId);
+  if(editingCollectionId && !editing){
+    // 正在编辑的作品被删掉了（比如后台刷新同步到了删除），退回新建
+    editingCollectionId = null;
+    updateEditingBanner();
+    showToast('原作品已不存在，将作为新作品发布');
+  }
   let title = editing ? editing.title : '';
   let category = editing && CATEGORIES.includes(editing.category) ? editing.category : CATEGORIES[0];
   let usingCustom = editing ? !CATEGORIES.includes(editing.category) : false;
@@ -2406,17 +2592,21 @@ function openPublishSheet(){
 }
 
 /* ===================== fonts section ===================== */
+// 缓存 key 里带上 URL 的哈希：改了字体链接就是一个新 family，
+// 否则编辑后列表里还是显示旧字形，要刷新页面才更新。
 const loadedFontFaces = new Set();
-function fontFamilyName(id){ return 'uf-'+String(id).replace(/[^a-zA-Z0-9]/g,''); }
+function fontFamilyName(font){ return 'uf-'+String(font.id).replace(/[^a-zA-Z0-9]/g,'')+'-'+hashStr(String(font.url||'')); }
 function ensureFontFace(font){
-  const family = fontFamilyName(font.id);
-  if(loadedFontFaces.has(font.id)) return family;
-  loadedFontFaces.add(font.id);
+  const family = fontFamilyName(font);
+  if(loadedFontFaces.has(family)) return family;
+  const src = cssUrlSafe(font.url);
+  if(!src) return family;
+  loadedFontFaces.add(family);
   try{
-    const face = new FontFace(family, `url("${font.url}")`);
+    const face = new FontFace(family, `url("${src}")`);
     face.load().then(loaded=>{ document.fonts.add(loaded); }).catch(err=>{
       console.warn('字体加载失败:', font.url, err);
-      loadedFontFaces.delete(font.id);
+      loadedFontFaces.delete(family);
     });
   }catch(e){ console.warn(e); }
   return family;
@@ -2434,10 +2624,9 @@ const LANG_SAMPLES = {
 /* ---- shared canvas renderer: used for list mini-cards AND the read-only detail view ---- */
 function fontCanvasHtml(f, mini){
   const family = ensureFontFace(f);
-  const isDarkBg = f.bg_color==='#000000' || f.bg_color==='#333333';
-  const safeBgUrl = f.bg_image ? String(f.bg_image).replace(/['"]/g, '') : '';
-  const bgStyle = f.bg_image ? `background:url('${safeBgUrl}') center/cover;` : `background:${esc(f.bg_color||'#FFFFFF')};`;
-  const colorStyle = f.bg_image ? 'color:#FFFFFF;' : `color:${isDarkBg?'#FFFFFF':'var(--ink)'};`;
+  const bgUrl = f.bg_image ? cssUrlSafe(f.bg_image) : '';
+  const bgStyle = bgUrl ? `background:url('${bgUrl}') center/cover;` : `background:${esc(f.bg_color||'#FFFFFF')};`;
+  const colorStyle = bgUrl ? 'color:#FFFFFF;' : `color:${isDarkColor(f.bg_color)?'#FFFFFF':'var(--ink)'};`;
   const alignClass = f.text_align==='left' ? ' align-left' : f.text_align==='right' ? ' align-right' : '';
   // mini (browse-list card) always renders at a fixed size via CSS — no
   // need to scale toward the configured font_size here anymore.
@@ -2466,7 +2655,7 @@ function renderFontLightboxBody(f, justToggled){
       <div class="font-lightbox-name">${esc(f.name)}</div>
       <div class="font-lightbox-sub">${esc(f.author_nickname||'')}</div>
       <div class="action-row" style="margin-top:14px;">
-        <button class="action-btn ${isLiked?'active':''}" id="lbFontLikeBtn">${heartIcon()}<span>${(f.like_count||0) + (isLiked?1:0)}</span></button>
+        <button class="action-btn ${isLiked?'active':''}" id="lbFontLikeBtn">${heartIcon()}<span>${f.like_count||0}</span></button>
         <button class="action-btn ${isFav?'active':''}" id="lbFontFavBtn">${bookmarkIcon()}<span>${isFav?'已收藏':'收藏'}</span></button>
         <button class="action-btn" id="lbFontShareBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg><span>分享</span></button>
       </div>
@@ -2479,7 +2668,7 @@ function renderFontLightboxBody(f, justToggled){
     openShareSheet({
       title: f.name,
       link: `${location.origin}${location.pathname}?font=${f.id}`,
-      filename: `${f.name||'字体'}.png`,
+      filename: `${safeFilename(f.name||'字体')}.png`,
       buildCardNode: ()=>buildFontShareCardNode(f),
     });
   });
@@ -2531,7 +2720,7 @@ function renderFontDetailBody(f, justToggled){
     <div class="font-card-stage">${fontCanvasHtml(f, false)}</div>
     ${f.source?`<p class="hint" style="margin-top:8px;">来源：${esc(f.source)}</p>`:''}
     <div class="action-row" style="margin-top:16px;">
-      <button class="action-btn ${isLiked?'active':''}" id="fontLikeBtn">${heartIcon()}<span>${(f.like_count||0) + (isLiked?1:0)}</span></button>
+      <button class="action-btn ${isLiked?'active':''}" id="fontLikeBtn">${heartIcon()}<span>${f.like_count||0}</span></button>
       <button class="action-btn ${isFav?'active':''}" id="fontFavBtn">${bookmarkIcon()}<span>${isFav?'已收藏':'收藏'}</span></button>
       <button class="action-btn" id="fontShareBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg><span>分享</span></button>
       <button class="action-btn" id="fontReportBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22V15"/></svg><span>举报</span></button>
@@ -2545,7 +2734,7 @@ function renderFontDetailBody(f, justToggled){
     openShareSheet({
       title: f.name,
       link: `${location.origin}${location.pathname}?font=${f.id}`,
-      filename: `${f.name||'字体'}.png`,
+      filename: `${safeFilename(f.name||'字体')}.png`,
       buildCardNode: ()=>buildFontShareCardNode(f),
     });
   });
@@ -2596,17 +2785,22 @@ function openFontEditor(existing){
   $('fontEditorOverlay').classList.add('open');
 }
 let draftFontUrl = null;
+let draftFontFace = null;
 let draftFontLoadToken = 0;
 function ensureDraftFontFace(url){
   const family = 'uf-draft';
-  if(!url){ draftFontUrl = null; return family; }
-  if(url === draftFontUrl) return family;
-  draftFontUrl = url;
+  const src = cssUrlSafe(url);
+  if(!src){ draftFontUrl = null; return family; }
+  if(src === draftFontUrl) return family;
+  draftFontUrl = src;
   const myToken = ++draftFontLoadToken;
+  // 同名 family 反复 add 会越堆越多，还可能让预览停在旧字体上
+  if(draftFontFace){ try{ document.fonts.delete(draftFontFace); }catch(e){} draftFontFace = null; }
   try{
-    const face = new FontFace(family, `url("${url}")`);
+    const face = new FontFace(family, `url("${src}")`);
     face.load().then(loaded=>{
       if(myToken !== draftFontLoadToken) return;
+      draftFontFace = loaded;
       document.fonts.add(loaded);
     }).catch(err=>{
       if(myToken !== draftFontLoadToken) return;
@@ -2622,13 +2816,13 @@ function renderFontEditorPreview(){
   canvas.classList.remove('mini', 'align-left', 'align-right');
   if(fontEditorState.align==='left') canvas.classList.add('align-left');
   else if(fontEditorState.align==='right') canvas.classList.add('align-right');
-  const isDarkBg = fontEditorState.bg==='#000000' || fontEditorState.bg==='#333333';
-  if(fontEditorState.bgImage){
-    canvas.style.background = `url('${fontEditorState.bgImage.replace(/'/g,"\\'")}') center/cover`;
+  const bgUrl = fontEditorState.bgImage ? cssUrlSafe(fontEditorState.bgImage) : '';
+  if(bgUrl){
+    canvas.style.background = `url('${bgUrl}') center/cover`;
     canvas.style.color = '#FFFFFF';
   } else {
     canvas.style.background = fontEditorState.bg;
-    canvas.style.color = isDarkBg ? '#FFFFFF' : 'var(--ink)';
+    canvas.style.color = isDarkColor(fontEditorState.bg) ? '#FFFFFF' : 'var(--ink)';
   }
   $('fontCardMain').style.fontFamily = `'${family}', sans-serif`;
   $('fontCardMain').style.fontSize = fontEditorState.fontSize+'px';
@@ -2774,14 +2968,12 @@ function handleDeepLink(){
   const fontId = params.get('font');
   const collId = params.get('collection');
   if(fontId && fonts.find(f=>f.id===fontId)){
-    showPage('fonts');
     openFontDetail(fontId);
   } else if(collId && collections.find(c=>c.id===collId)){
     openDetail(collId);
   }
 }
 
-/* ===================== init ===================== */
 /* ===================== init ===================== */
 function renderAll(){
   renderHome();
