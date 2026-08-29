@@ -18,16 +18,15 @@
 <meta property="og:description" content="表情包合集与字体，来看看大家分享了什么">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary">
-<!-- 供应链加固：这三个第三方脚本一旦被投毒就是全站账号失守。
-     给每个标签补上 integrity="sha384-..."。取哈希的方法二选一：
-       a) 打开 cdnjs.com 搜对应库版本，点 "Copy SRI"；
-       b) 本地执行（把 URL 换成下面各行的 src）：
-          curl -s <URL> | openssl dgst -sha384 -binary | openssl base64 -A
-     补完形如：<script src="..." integrity="sha384-xxxx" crossorigin="anonymous"></script>
-     注意：哈希填错脚本会被浏览器直接拦掉，改完务必在真机上验证一次。 -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
+<!-- 三个依赖改成本地文件，跟这个 HTML 放在同一目录。
+     不再依赖第三方 CDN，也就不需要 SRI 哈希了。
+     升级时重新下载覆盖即可：
+       jszip.min.js        https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js
+       html2canvas.min.js  https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js
+       supabase.min.js     https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js -->
+<script src="./jszip.min.js"></script>
+<script src="./html2canvas.min.js"></script>
+<script src="./supabase.min.js"></script>
 <style>
   :root{
     --bg:#FFFFFF; --bg-elev:#F7F7F7; --bg-hover:#EDEDED;
