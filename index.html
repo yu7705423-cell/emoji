@@ -1143,7 +1143,7 @@ async function createCollectionRemote(title, category, items, source){
     if(assetIds && assetIds.length) await sb.from('image_assets').delete().in('id', assetIds);
   };
   const { data: assets, error: aErr } = await sb.from('image_assets')
-    .insert(items.map(it=>({ source_type:'external_url', source_url: it.url.trim() }))).select();
+    .insert(items.map(it=>({ source_type:'external_url', source_url: it.url.trim(), user_id: currentUserId }))).select();
   if(aErr){ await rollback(); showToast('图片保存失败：'+aErr.message); return false; }
   const assetIds = mapAssetsToItems(items, assets);
   if(!assetIds){
@@ -1169,7 +1169,7 @@ async function updateCollectionRemote(id, title, category, items, source){
 
   // 2) 先插新图片资源（这一步不破坏任何现有数据）
   const { data: assets, error: aErr } = await sb.from('image_assets')
-    .insert(items.map(it=>({ source_type:'external_url', source_url: it.url.trim() }))).select();
+    .insert(items.map(it=>({ source_type:'external_url', source_url: it.url.trim(), user_id: currentUserId }))).select();
   if(aErr){ showToast('图片保存失败：'+aErr.message); return false; }
   const newAssetIds = (assets||[]).map(a=>a.id);
   const pairedIds = mapAssetsToItems(items, assets);
