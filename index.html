@@ -294,6 +294,10 @@
   /* P3: long-press peek */
   .peek-mask{position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:70; display:none; align-items:center; justify-content:center; padding:14px;}
   .peek-mask.show{display:flex;}
+  /* 卡片和"点击空白处关闭"外面这层必须撑满，否则它作为 flex 子项会按内容收缩 ——
+     宽度被那行提示文字决定（一百多 px），里面 .peek-card 的 width:100% 就只有那么宽，
+     max-width 再大也没用。这个坑让弹层一直很小，改多少次上限都没反应。 */
+  .peek-wrap{width:100%; display:flex; flex-direction:column; align-items:center;}
   .peek-card{width:100%; max-width:420px; background:var(--bg); border-radius:16px; overflow:hidden; box-shadow:0 24px 60px rgba(0,0,0,.35); transform:scale(.92); opacity:0; transition:transform .18s cubic-bezier(.2,.8,.4,1), opacity .18s ease; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none;}
   .peek-card img{-webkit-touch-callout:none; -webkit-user-drag:none; pointer-events:none;}
   .peek-mask.show .peek-card{transform:scale(1); opacity:1;}
@@ -780,7 +784,7 @@
 
   <!-- P3: long-press card preview -->
   <div class="peek-mask" id="peekMask">
-    <div>
+    <div class="peek-wrap">
       <div class="peek-card" id="peekCard"></div>
       <div class="peek-hint">点击空白处关闭</div>
     </div>
@@ -2282,9 +2286,13 @@ function renderItemsGrid(container, items, emptyText, action){
 // 长按预览的封面：最多铺 6 张，3 列 2 行，格数跟分享卡片共用同一张 GRID_LAYOUTS 表。
 // 弹层已经尽量放宽（见 .peek-card / .peek-mask），但 3 列摆在手机屏上单格也就
 // 120px 左右 —— 这是屏幕宽度决定的，想再大只能减列数。
-function peekCoverHtml(emojis){
+function peekLayout(emojis){
   const list = (emojis||[]).slice(0, 6);
   const [cols, rows] = GRID_LAYOUTS[list.length] || [3,2];
+  return { list, cols, rows };
+}
+function peekCoverHtml(emojis){
+  const { list, cols, rows } = peekLayout(emojis);
   const cells = list.slice(0, cols*rows);
   while(cells.length < cols*rows) cells.push(null);
   const inner = cells.map(e=> e
@@ -2294,9 +2302,24 @@ function peekCoverHtml(emojis){
     <div class="peek-cover-inner" style="grid-template-columns:repeat(${cols},1fr); grid-template-rows:repeat(${rows},1fr);">${inner}</div>
   </div>`;
 }
+// 弹层宽度不写死，每次打开按当前视口现算 —— 之前钉死在一个像素值上，
+// 手机上还算合适，到了 iPad / 宽屏就只占屏幕一小块，看着特别小。
+// 不设上限，能占多大占多大，两个约束取小的那个：
+//   · 屏幕宽度（留一点边）
+//   · 屏幕高度（封面高 = 宽 × rows/cols，加上下面文字区不能超出屏幕。
+//     所以 1 张图那种正方形封面会自动比 3×2 的窄，横屏时也会被高度先卡住，
+//     不会顶出屏幕）
+const PEEK_BODY_H = 118, PEEK_GAP = 28;
+function peekCardWidth(cols, rows){
+  const byWidth  = window.innerWidth * 0.94;
+  const byHeight = (window.innerHeight - PEEK_GAP - PEEK_BODY_H) / (rows / cols);
+  return Math.max(240, Math.round(Math.min(byWidth, byHeight)));
+}
 function showPeek(id){
   const c = collections.find(x=>x.id===id); if(!c) return;
   const avatarSrc = (c.authorId===currentUserId) ? (getMyHdAvatar() || avatarDataUrl) : c.authorAvatarUrl;
+  const { cols, rows } = peekLayout(c.emojis);
+  $('peekCard').style.maxWidth = peekCardWidth(cols, rows) + 'px';
   $('peekCard').innerHTML = `
     <div>${peekCoverHtml(c.emojis)}</div>
     <div class="peek-body">
