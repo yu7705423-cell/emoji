@@ -194,6 +194,48 @@
   .perm-row .sel-check-inline{margin-top:0;}
   .perm-label{font-size:13px; font-weight:500;}
 
+  /* ---- 「其他」板块：铃声 / 头像框 / 教程 / 指路 ---- */
+  .post-kind-pick{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px;}
+  .post-kind-btn{text-align:left; background:transparent; border:1px solid var(--border); border-radius:var(--radius-m); padding:13px 14px; cursor:pointer; color:var(--text);}
+  .post-kind-btn:active{transform:scale(.97);}
+  .post-kind-btn b{display:block; font-size:13.5px; font-weight:600;}
+  .post-kind-btn span{display:block; font-size:11px; color:var(--text-faint); margin-top:4px; line-height:1.5;}
+  /* 卡片封面：这四种没有图片网格，用一块方形色卡承载图标或文字预览，
+     保证和表情包/字体卡片在同一个网格里高度一致，不会参差 */
+  .post-cover{width:100%; padding-top:100%; position:relative; overflow:hidden; border:1px solid var(--border-soft); background:var(--bg-elev);}
+  .post-cover-in{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:14px; text-align:center;}
+  .post-cover-in svg{width:30px; height:30px; color:var(--text-faint); stroke-width:1.4;}
+  .post-cover-in .excerpt{font-size:11px; line-height:1.7; color:var(--text-dim); overflow:hidden; display:-webkit-box; -webkit-line-clamp:5; -webkit-box-orient:vertical;}
+  .post-cover-in img{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; padding:10px;}
+  .post-kind-tag{position:absolute; left:6px; top:6px; font-size:9.5px; letter-spacing:.06em; background:var(--ink); color:var(--ink-contrast); border-radius:999px; padding:2px 7px;}
+  /* 铃声试听 */
+  .ring-row{display:flex; align-items:center; gap:11px; border:1px solid var(--border); border-radius:var(--radius-m); padding:11px 13px; margin-top:12px;}
+  .ring-play{width:38px; height:38px; flex-shrink:0; border-radius:50%; border:none; background:var(--ink); color:var(--ink-contrast); display:flex; align-items:center; justify-content:center; cursor:pointer;}
+  .ring-play svg{width:15px; height:15px;}
+  .ring-meta{flex:1; min-width:0; font-size:12px; color:var(--text-dim);}
+  .ring-bar{height:3px; border-radius:2px; background:var(--border-soft); margin-top:6px; overflow:hidden;}
+  .ring-bar i{display:block; height:100%; width:0; background:var(--ink);}
+  /* 头像框合成器 */
+ .af-stage{position:relative; width:100%; max-width:300px; margin:0 auto; aspect-ratio:1/1; background:var(--bg-elev); border:1px solid var(--border-soft); overflow:hidden; touch-action:none; cursor:grab;}
+.af-stage canvas{position:absolute; inset:0; width:100%; height:100%; display:block;}
+/* 显示用的两层图，盖在画布上面。画布只留着导出用 —— GIF 画进画布只会定格在
+   第一帧，<img> 才会正常动。头像现在固定铺满、只按形状裁一刀；缩放和拖动
+   都挪给了头像框那一层——头像框天生可能比头像大出一截，让它自己去对准
+   固定不动的头像，比反过来逼用户硬凑头像位置直观得多。 */
+.af-layer{position:absolute; display:block; pointer-events:none; max-width:none;}
+.af-layer[hidden]{display:none;}
+.af-av-clip{position:absolute; inset:0; overflow:hidden;}
+.af-av-clip.circle{border-radius:50%;}
+.af-av-img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; pointer-events:none;}
+
+  .af-hint{font-size:11px; color:var(--text-faint); text-align:center; margin-top:8px; line-height:1.6;}
+  .af-ctl{display:flex; align-items:center; gap:10px; margin-top:12px;}
+  .af-ctl label{font-size:11.5px; color:var(--text-dim); flex-shrink:0;}
+  .af-ctl input[type=range]{flex:1; accent-color:var(--ink);}
+  /* 指路的授权提示：这是法律/礼节问题，必须显眼，不能做成灰色小字 */
+  .guide-note{border:1px solid var(--border); border-left:3px solid var(--ink); background:var(--bg-elev); padding:10px 12px; font-size:11.5px; line-height:1.75; color:var(--text-dim); margin-top:12px;}
+  .post-body{font-size:13.5px; line-height:1.85; color:var(--text); white-space:pre-wrap; word-break:break-word;}
+
   /* overlay (detail + AI + settings) */
   .overlay{position:fixed; inset:0; background:var(--bg); z-index:50; display:flex; flex-direction:column; max-width:480px; margin:0 auto; border-left:1px solid var(--border); border-right:1px solid var(--border); transform:translateX(100%); visibility:hidden; transition:transform .28s cubic-bezier(.2,.7,.3,1), visibility 0s linear .28s;}
   .overlay.open{transform:translateX(0); visibility:visible; transition:transform .28s cubic-bezier(.2,.7,.3,1), visibility 0s linear 0s;}
@@ -420,6 +462,7 @@
         <div class="type-toggle" id="homeTypeToggle">
           <button class="active" data-type="collections">表情包</button>
           <button data-type="fonts">字体</button>
+          <button data-type="posts">其他</button>
         </div>
         <button class="icon-btn" id="homeRefreshBtn" aria-label="刷新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v6h-6"/></svg></button>
         <button class="icon-btn" id="notifBtn" aria-label="通知" style="position:relative;">
@@ -429,7 +472,7 @@
         <button class="icon-btn" id="homeSearchBtn" aria-label="搜索"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></button>
       </div>
       <div id="homeSearchWrap" style="display:none; margin-top:10px;">
-        <input class="field-input" id="homeSearch" placeholder="搜索表情包、字体或作者昵称">
+        <input class="field-input" id="homeSearch" placeholder="搜索表情包、字体、其他或作者昵称">
       </div>
       <div class="chip-row" id="homeSortRow" style="margin-top:10px;">
         <button class="chip active" data-sort="new">最新</button>
@@ -445,6 +488,7 @@
         <div class="type-toggle" id="catTypeToggle">
           <button class="active" data-type="collections">表情包</button>
           <button data-type="fonts">字体</button>
+          <button data-type="posts">其他</button>
         </div>
         <button class="icon-btn" id="catSearchBtn" aria-label="搜索"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></button>
       </div>
@@ -464,6 +508,7 @@
       <div class="type-toggle" id="pubTypeToggle">
         <button class="active" data-type="collections">发布表情包</button>
         <button data-type="fonts">发布字体</button>
+        <button data-type="posts">发布其他</button>
       </div>
 
       <div id="pubCollectionsPane" style="margin-top:16px;">
@@ -513,6 +558,11 @@
       <div id="pubFontsPane" style="display:none; margin-top:16px;">
         <p class="hint" style="margin-top:0;">上传一个字体文件链接，配一段展示文案、挑选语言样例，做成一张可以分享的字体卡片。</p>
         <div class="btn-row"><button class="btn-solid" id="pubCreateFontBtn">创建字体卡片</button></div>
+      </div>
+
+      <div id="pubPostsPane" style="display:none; margin-top:16px;">
+        <p class="hint" style="margin-top:0;">铃声、头像框、教程、指路都发在这里。选一个类型开始。</p>
+        <div class="post-kind-pick" id="pubPostKindPick"></div>
       </div>
     </div>
 
@@ -599,6 +649,34 @@
   </div>
 
   <!-- font showcase / detail overlay: READ-ONLY viewing, same for everyone -->
+  <div class="overlay" id="postDetailOverlay">
+    <div class="overlay-head">
+      <button class="icon-btn" id="postDetailBackBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <div class="overlay-title" id="postDetailTitle"></div>
+      <div id="postDetailActions" style="display:flex;"></div>
+    </div>
+    <div class="overlay-body" id="postDetailBody" style="padding:16px 18px;"></div>
+  </div>
+
+  <div class="overlay" id="postEditorOverlay">
+    <div class="overlay-head">
+      <button class="icon-btn" id="postEditorBackBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <div class="overlay-title" id="postEditorTitle">发布</div>
+      <div style="width:34px;"></div>
+    </div>
+    <div class="overlay-body" id="postEditorBody" style="padding:16px 18px;"></div>
+  </div>
+
+  <!-- 头像框试戴：发布/编辑时先看效果，跟详情页用的是同一套合成代码 -->
+  <div class="overlay" id="afTryOverlay">
+    <div class="overlay-head">
+      <button class="icon-btn" id="afTryBackBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <div class="overlay-title">试戴看看</div>
+      <div style="width:34px;"></div>
+    </div>
+    <div class="overlay-body" id="afTryBody" style="padding:16px 18px;"></div>
+  </div>
+
   <div class="overlay" id="fontDetailOverlay">
     <div class="overlay-head">
       <button class="icon-btn" id="fontDetailBackBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
@@ -833,6 +911,19 @@
 const WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const CATEGORIES = ["抽象","可爱","韩系","猫猫","情侣","发疯","搞笑","日常"];
 const FONT_CATEGORIES = ["系统体","手写体","可爱","复古","艺术"];
+// ---- 「其他」板块 ----
+// 四种内容共用一张 posts 表，靠 kind 区分。放一起是因为公共字段（标题/标签/
+// 权限/作者/时间）完全相同，拆开会让首页、分类、收藏、我的每处都变成四段重复。
+const POST_KINDS = [
+  { id:'ringtone',     label:'铃声',   desc:'贴一个音频链接，大家可以直接试听' },
+  { id:'avatar_frame', label:'头像框', desc:'贴一张头像框图，可以套自己的头像看效果' },
+  { id:'tutorial',     label:'教程',   desc:'纯文字分享，写教程或经验' },
+  { id:'guide',        label:'指路',   desc:'指路开源项目或原作者主页' },
+];
+const POST_KIND_LABEL = {};
+POST_KINDS.forEach(k=>{ POST_KIND_LABEL[k.id] = k.label; });
+// 头像框预览的默认底图，用户可以换成自己的头像
+const DEFAULT_AVATAR_BASE = 'https://imgbed.heliar.top/i/jKOntfVsP4XZ243v_IMG_9148.png';
 const DESC_POOL = ["真的服了","我无语了","笑死","绝了","受不了了","爱了爱了","救命","好家伙","离谱","emo了","冲了","摆烂","睡了","开摆"];
 const DEFAULT_PROMPT = '你是表情包描述助手。只输出一个不超过10个字的中文短语，描述这张图表达的情绪或使用场景，方便之后检索。严格要求：不要输出任何前缀、称呼、解释、思考过程、标点或引号；不要说"这张图片"之类的开场白；直接给出短语本身。例如：无语又想笑';
 const FORMATS = [
@@ -926,6 +1017,7 @@ let collections = [];
 let liked = new Set();
 let favorited = new Set();
 let fonts = [];
+let posts = [];
 let notifications = [];
 let userStats = new Map(); // userId -> {nickname, avatarUrl, worksCount, totalLikes}
 
@@ -1128,15 +1220,15 @@ async function loadCollections(){
 async function loadMyLikesFavorites(){
   // (collection_id, font_id) 在单个用户下唯一，用它做排序键翻页才稳
   const ordered = q => q.order('collection_id', {ascending:true, nullsFirst:true}).order('font_id', {ascending:true, nullsFirst:true});
-  const { data: likeRows, error: lErr } = await fetchAllRows(()=> ordered(sb.from('likes').select('collection_id, font_id').eq('user_id', currentUserId)));
+  const { data: likeRows, error: lErr } = await fetchAllRows(()=> ordered(sb.from('likes').select('collection_id, font_id, post_id').eq('user_id', currentUserId)));
   if(lErr) showToast('加载点赞失败：'+lErr.message);
-  else liked = new Set((likeRows||[]).flatMap(r=>[r.collection_id, r.font_id].filter(Boolean)));
-  const { data: favRows, error: fErr } = await fetchAllRows(()=> ordered(sb.from('favorites').select('collection_id, font_id').eq('user_id', currentUserId)));
+  else liked = new Set((likeRows||[]).flatMap(r=>[r.collection_id, r.font_id, r.post_id].filter(Boolean)));
+  const { data: favRows, error: fErr } = await fetchAllRows(()=> ordered(sb.from('favorites').select('collection_id, font_id, post_id').eq('user_id', currentUserId)));
   if(fErr) showToast('加载收藏失败：'+fErr.message);
-  else favorited = new Set((favRows||[]).flatMap(r=>[r.collection_id, r.font_id].filter(Boolean)));
+  else favorited = new Set((favRows||[]).flatMap(r=>[r.collection_id, r.font_id, r.post_id].filter(Boolean)));
 }
 async function loadAppData(){
-  await Promise.all([loadCollections(), loadMyLikesFavorites(), loadFonts(), loadNotifications()]);
+  await Promise.all([loadCollections(), loadMyLikesFavorites(), loadFonts(), loadPosts(), loadNotifications()]);
   renderProfileBits();
   renderAll();
   startAutoRefresh();
@@ -1147,7 +1239,7 @@ let autoRefreshTimer = null;
 let refreshInFlight = false;
 function isBusyForRefresh(){
   if(currentPageId === 'publish') return true;
-  const overlayIds = ['detailOverlay','fontDetailOverlay','fontEditorOverlay','aiOverlay','settingsOverlay','userProfileOverlay'];
+  const overlayIds = ['detailOverlay','fontDetailOverlay','fontEditorOverlay','postDetailOverlay','postEditorOverlay','afTryOverlay','aiOverlay','settingsOverlay','userProfileOverlay'];
   if(overlayIds.some(id => { const el=$(id); return el && el.classList.contains('open'); })) return true;
   const sheetIds = ['dlSheetMask','pubSheetMask','confirmSheetMask','shareSheetMask','reportSheetMask','profileSheetMask','avatarCropMask','notifSheetMask'];
   if(sheetIds.some(id => { const el=$(id); return el && el.classList.contains('open'); })) return true;
@@ -1163,7 +1255,7 @@ async function silentRefresh(force){
   const scroller = document.querySelector('.page-scroll');
   const scrollPos = scroller ? scroller.scrollTop : 0;
   try{
-    await Promise.all([loadCollections(), loadMyLikesFavorites(), loadFonts(), loadNotifications()]);
+    await Promise.all([loadCollections(), loadMyLikesFavorites(), loadFonts(), loadPosts(), loadNotifications()]);
     renderProfileBits();
     renderAll();
     if(scroller) scroller.scrollTop = scrollPos;
@@ -1344,6 +1436,12 @@ async function deleteCollectionRemote(id){
 // 点赞数直接改本地对象，渲染时就不用再 "+1" 了。
 // 之前那种 likeCount + (自己点了?1:0) 只有在视图排除了自己时才对，
 // 否则会重复计数，而且每次后台刷新数字都会跳一下。
+// 第二个参数原来是布尔的 isFont。现在有三类内容，扩成"哪一类"：
+// true / 'font' -> 字体，'post' -> 其他，省略 -> 表情包。
+// true 和省略这两种老写法保持能用，现有调用点一个都不用改。
+function likeCol(kind){
+  return (kind === true || kind === 'font') ? 'font_id' : kind === 'post' ? 'post_id' : 'collection_id';
+}
 function bumpLikeCount(id, isFont, delta){
   if(isFont){
     const f = fonts.find(x=>x.id===id);
@@ -1354,7 +1452,7 @@ function bumpLikeCount(id, isFont, delta){
   }
 }
 async function toggleLikeRemote(id, isFont){
-  const col = isFont ? 'font_id' : 'collection_id';
+  const col = likeCol(isFont);
   if(liked.has(id)){
     liked.delete(id); bumpLikeCount(id, isFont, -1);
     const { error } = await sb.from('likes').delete().eq('user_id', currentUserId).eq(col, id);
@@ -1373,12 +1471,12 @@ async function notifyLike(id, isFont){
   const ownerId = isFont ? (fonts.find(x=>x.id===id)||{}).user_id : (collections.find(x=>x.id===id)||{}).authorId;
   if(!ownerId || ownerId===currentUserId) return;
   const payload = { recipient_id: ownerId, actor_id: currentUserId, actor_nickname: currentUser, type:'like' };
-  payload[isFont ? 'font_id' : 'collection_id'] = id;
+  payload[likeCol(isFont)] = id;
   const { error } = await sb.from('notifications').insert(payload);
   if(error) console.warn('写点赞提醒失败（可能还没建 notifications 表，见 sql/notifications.sql）：', error.message);
 }
 async function toggleFavoriteRemote(id, isFont){
-  const col = isFont ? 'font_id' : 'collection_id';
+  const col = likeCol(isFont);
   if(favorited.has(id)){
     favorited.delete(id);
     const { error } = await sb.from('favorites').delete().eq('user_id', currentUserId).eq(col, id);
@@ -1463,6 +1561,15 @@ async function saveProfileRemote(nickname, status, avatar){
   const { error } = await sb.from('users').update({ nickname, status_message: status, avatar_url: avatar }).eq('id', currentUserId);
   if(error){ showToast('保存失败：'+error.message); return false; }
   return true;
+}
+async function loadPosts(){
+  const { data, error } = await fetchAllRows(()=> sb.from('posts').select('*')
+    .order('created_at', {ascending:false}).order('id', {ascending:true}));
+  // 表还没建时不要把整个首页拖垮，静默退回空列表（跟标签那几列一个处理方式）
+  if(error){ console.warn('加载「其他」失败（可能 posts 表还没建）：', error.message); posts = []; return; }
+  posts = (data||[]).map(r=>Object.assign({}, r, {
+    tags: asArray(r.tags).map(t=>String(t==null?'':t).trim()).filter(Boolean),
+  }));
 }
 async function loadFonts(){
   const { data, error } = await fetchAllRows(()=> sb.from('fonts_with_author').select('*')
@@ -2183,6 +2290,11 @@ function rebuildUserStats(){
     const s = touch(f.user_id, f.author_nickname, null);
     s.worksCount++; s.totalLikes += (f.like_count||0);
   });
+  posts.forEach(pt=>{
+    if(!pt.user_id) return;
+    const s = touch(pt.user_id, pt.author_nickname, pt.author_avatar_url);
+    s.worksCount++; s.totalLikes += (pt.like_count||0);
+  });
   userStats = map;
 }
 function authorLinkHtml(userId, name, extraStyle){
@@ -2219,6 +2331,7 @@ function openUserProfile(userId, fallbackName){
   const items = [
     ...collections.filter(c=>c.authorId===userId).map(c=>({type:'collection', data:c})),
     ...fonts.filter(f=>f.user_id===userId).map(f=>({type:'font', data:f})),
+    ...posts.filter(pt=>pt.user_id===userId).map(pt=>({type:'post', data:pt})),
   ];
   $('userProfileWorks').textContent = items.length;
   $('userProfileLikes').textContent = (s && s.totalLikes) || 0;
@@ -2250,6 +2363,38 @@ function fontBrowseCardHtml(f){
     <div class="coll-stats"><span>${heartIcon()}${f.like_count||0}</span></div>
   </button>`;
 }
+function postIconSvg(kind){
+  const paths = {
+    ringtone:     '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+    avatar_frame: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="12" cy="10" r="3"/><path d="M6.5 19a5.6 5.6 0 0 1 11 0"/>',
+    tutorial:     '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M8 7.5h8M8 11h6"/>',
+    guide:        '<path d="M12 21s7-5.3 7-11a7 7 0 1 0-14 0c0 5.7 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/>',
+  };
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">${paths[kind]||paths.tutorial}</svg>`;
+}
+// 封面：头像框直接显示那张图，教程显示正文开头，其余显示图标。
+// 不管哪种都套在同一个 padding-top:100% 的方框里，跟表情包/字体卡片同高。
+function postCoverHtml(pt){
+  let inner;
+  if(pt.kind === 'avatar_frame' && pt.url){
+    inner = `<img src="${esc(pt.url)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">`;
+  } else if(pt.kind === 'tutorial' && (pt.body||'').trim()){
+    inner = `<div class="excerpt">${esc(pt.body.trim().slice(0, 90))}</div>`;
+  } else {
+    inner = postIconSvg(pt.kind);
+  }
+  return `<div class="post-cover"><div class="post-cover-in">${inner}</div>
+    <span class="post-kind-tag">${esc(POST_KIND_LABEL[pt.kind]||'其他')}</span></div>`;
+}
+function postCardHtml(pt){
+  return `<button class="coll-card" data-post-id="${esc(pt.id)}">
+    ${postCoverHtml(pt)}
+    <div class="coll-name">${esc(pt.title)}</div>
+    <div class="coll-sub">${authorLinkHtml(pt.user_id, pt.author_nickname)} · ${esc(POST_KIND_LABEL[pt.kind]||'其他')}</div>
+    <div class="coll-stats"><span>${heartIcon()}${pt.like_count||0}</span></div>
+    ${tagRowHtml(pt.tags)}
+  </button>`;
+}
 function emptyStateHtml(text, action){
   const btn = action ? `<button class="btn-outline empty-action">${esc(action.label)}</button>` : '';
   return `<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/><circle cx="8.5" cy="8.5" r="1.2"/></svg><p>${esc(text)}</p>${btn}</div>`;
@@ -2263,7 +2408,7 @@ function renderItemsGrid(container, items, emptyText, action){
     if(btn && action) btn.addEventListener('click', action.onClick);
     return;
   }
-  container.innerHTML = `<div class="coll-grid">${items.map(it=> it.type==='font' ? fontBrowseCardHtml(it.data) : collCardHtml(it.data)).join('')}</div>`;
+  container.innerHTML = `<div class="coll-grid">${items.map(it=> it.type==='font' ? fontBrowseCardHtml(it.data) : it.type==='post' ? postCardHtml(it.data) : collCardHtml(it.data)).join('')}</div>`;
   container.querySelectorAll('.coll-card[data-id]').forEach(el=>{
     const id = el.dataset.id;
     let timer = null, longPressed = false;
@@ -2279,6 +2424,9 @@ function renderItemsGrid(container, items, emptyText, action){
   });
   container.querySelectorAll('.coll-card[data-font-id]').forEach(el=>{
     el.addEventListener('click', ()=>openFontLightbox(el.dataset.fontId));
+  });
+  container.querySelectorAll('.coll-card[data-post-id]').forEach(el=>{
+    el.addEventListener('click', ()=>openPostDetail(el.dataset.postId));
   });
 }
 
@@ -2343,7 +2491,7 @@ document.querySelectorAll('#homeTypeToggle button').forEach(b=>{
     document.querySelectorAll('#homeTypeToggle button').forEach(x=>x.classList.remove('active'));
     b.classList.add('active');
     homeMode = b.dataset.type;
-    $('homeSectionTitle').textContent = homeMode==='fonts' ? '字体' : '作品';
+    $('homeSectionTitle').textContent = homeMode==='fonts' ? '字体' : homeMode==='posts' ? '其他' : '作品';
     renderHome();
   });
 });
@@ -2361,8 +2509,13 @@ function renderHome(){
     if(q) list = list.filter(c => low(c.title).includes(q) || low(c.category).includes(q) || low(c.author).includes(q) || c.emojis.some(e=>low(e.desc).includes(q)) || asArray(c.tags).some(t=>low(t).includes(q)));
     items = list.map(c=>({type:'collection', data:c, sortKey: homeSort==='hot' ? c.likeCount : c.createdAt}));
   }
+  if(homeMode==='posts'){
+    let list = posts;
+    if(q) list = list.filter(pt => low(pt.title).includes(q) || low(pt.author_nickname).includes(q) || low(pt.body).includes(q) || low(POST_KIND_LABEL[pt.kind]).includes(q) || asArray(pt.tags).some(t=>low(t).includes(q)));
+    items = list.map(pt=>({type:'post', data:pt, sortKey: homeSort==='hot' ? (pt.like_count||0) : new Date(pt.created_at).getTime()}));
+  }
   items.sort((a,b)=>b.sortKey-a.sortKey);
-  renderItemsGrid($('homeGrid'), items, q ? '没有找到相关内容，换个关键词试试' : (homeMode==='fonts'?'还没有字体':'还没有作品'));
+  renderItemsGrid($('homeGrid'), items, q ? '没有找到相关内容，换个关键词试试' : (homeMode==='fonts'?'还没有字体':homeMode==='posts'?'还没有内容':'还没有作品'));
 }
 $('homeSearch').addEventListener('input', renderHome);
 document.querySelectorAll('#homeSortRow .chip').forEach(c=>{
@@ -2387,7 +2540,8 @@ document.querySelectorAll('#catTypeToggle button').forEach(b=>{
 $('catSearch').addEventListener('input', renderCategory);
 function renderCategoryChips(){
   const wrap = $('catChipRow'); wrap.innerHTML='';
-  const list = catMode==='fonts' ? FONT_CATEGORIES : CATEGORIES;
+  // 「其他」下面没有分类，四种内容类型本身就是它的分类
+  const list = catMode==='fonts' ? FONT_CATEGORIES : catMode==='posts' ? POST_KINDS.map(k=>k.label) : CATEGORIES;
   const all = document.createElement('button'); all.className='chip'+(activeCategory===null?' active':''); all.textContent='全部';
   all.addEventListener('click',()=>{activeCategory=null; renderCategoryChips(); renderCategory();});
   wrap.appendChild(all);
@@ -2409,6 +2563,11 @@ function renderCategory(){
     if(q){ list = list.filter(c=>low(c.title).includes(q) || low(c.author).includes(q) || c.emojis.some(e=>low(e.desc).includes(q)) || asArray(c.tags).some(t=>low(t).includes(q))); }
     items = list.map(c=>({type:'collection', data:c}));
   }
+  if(catMode==='posts'){
+    let list = activeCategory ? posts.filter(pt=>POST_KIND_LABEL[pt.kind]===activeCategory) : posts.slice();
+    if(q){ list = list.filter(pt=>low(pt.title).includes(q) || low(pt.author_nickname).includes(q) || low(pt.body).includes(q) || asArray(pt.tags).some(t=>low(t).includes(q))); }
+    items = list.map(pt=>({type:'post', data:pt}));
+  }
   renderItemsGrid($('catGrid'), items, activeCategory ? `「${activeCategory}」分类下暂时还没有内容` : '还没有内容');
 }
 
@@ -2417,6 +2576,7 @@ function renderFavorites(){
   const items = [
     ...collections.filter(c=>favorited.has(c.id)).map(c=>({type:'collection', data:c})),
     ...fonts.filter(f=>favorited.has(f.id)).map(f=>({type:'font', data:f})),
+    ...posts.filter(pt=>favorited.has(pt.id)).map(pt=>({type:'post', data:pt})),
   ];
   renderItemsGrid($('favGrid'), items, '还没有收藏任何内容', {label:'去首页看看', onClick:()=>showPage('home')});
 }
@@ -2438,6 +2598,7 @@ function renderMy(){
     items = [
       ...collections.filter(c=>c.authorId===currentUserId).map(c=>({type:'collection', data:c})),
       ...fonts.filter(f=>f.user_id===currentUserId).map(f=>({type:'font', data:f})),
+      ...posts.filter(pt=>pt.user_id===currentUserId).map(pt=>({type:'post', data:pt})),
     ];
     emptyText = '还没有发布过作品';
     action = {label:'去发布', onClick:()=>showPage('publish')};
@@ -2445,6 +2606,7 @@ function renderMy(){
     items = [
       ...collections.filter(c=>favorited.has(c.id)).map(c=>({type:'collection', data:c})),
       ...fonts.filter(f=>favorited.has(f.id)).map(f=>({type:'font', data:f})),
+      ...posts.filter(pt=>favorited.has(pt.id)).map(pt=>({type:'post', data:pt})),
     ];
     emptyText = '还没有收藏任何内容';
     action = {label:'去首页看看', onClick:()=>showPage('home')};
@@ -2452,6 +2614,7 @@ function renderMy(){
     items = [
       ...collections.filter(c=>liked.has(c.id)).map(c=>({type:'collection', data:c})),
       ...fonts.filter(f=>liked.has(f.id)).map(f=>({type:'font', data:f})),
+      ...posts.filter(pt=>liked.has(pt.id)).map(pt=>({type:'post', data:pt})),
     ];
     emptyText = '还没有点赞过任何内容';
     action = {label:'去首页看看', onClick:()=>showPage('home')};
@@ -2694,6 +2857,8 @@ document.querySelectorAll('#pubTypeToggle button').forEach(b=>{
     const mode = b.dataset.type;
     $('pubCollectionsPane').style.display = mode==='collections' ? 'block' : 'none';
     $('pubFontsPane').style.display = mode==='fonts' ? 'block' : 'none';
+    $('pubPostsPane').style.display = mode==='posts' ? 'block' : 'none';
+    if(mode==='posts') renderPostKindPick();
   });
 });
 
@@ -3483,6 +3648,480 @@ function openPublishSheet(){
   }
 }
 
+/* ===================== 「其他」：详情 / 试听 / 头像框合成 ===================== */
+let openPostId = null;
+
+// 把远端图片取成能画进 canvas 的样子。直接复用分享卡片那套：先试直连，
+// 不行再走 img-proxy。画布一旦被跨域图污染，toBlob 就会抛错、导不出图，
+// 所以这一步不能省。
+async function loadImageForCanvas(url){
+  if(!url) return null;
+  const good = await exportableUrl(url);
+  if(!good) return null;
+  return new Promise(resolve=>{
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = ()=>resolve(img);
+    img.onerror = ()=>resolve(null);
+    img.src = good;
+  });
+}
+
+function openPostDetail(id){
+  openPostId = id;
+  $('postDetailOverlay').classList.add('open');
+  renderPostDetail();
+}
+$('postDetailBackBtn').addEventListener('click', ()=>{
+  $('postDetailOverlay').classList.remove('open');
+  stopRingtone();
+});
+
+function postMetaHtml(pt){
+  const d = new Date(pt.created_at);
+  const dateStr = isFinite(d.getTime()) ? `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}` : '';
+  return `<div class="detail-title">${esc(pt.title)}</div>
+    <div class="detail-sub">${authorLinkHtml(pt.user_id, pt.author_nickname)} · ${esc(POST_KIND_LABEL[pt.kind]||'其他')}${dateStr?` · ${esc(dateStr)}`:''}</div>
+    ${tagRowHtml(pt.tags)}`;
+}
+
+function renderPostDetail(justToggled){
+  const pt = posts.find(x=>x.id===openPostId);
+  if(!pt){
+    if($('postDetailOverlay').classList.contains('open')){
+      $('postDetailOverlay').classList.remove('open');
+      showToast('这条内容已经被作者删除了');
+    }
+    openPostId = null; return;
+  }
+  $('postDetailTitle').textContent = pt.title;
+  const isOwner = pt.user_id === currentUserId;
+  $('postDetailActions').innerHTML = isOwner
+    ? `<button class="icon-btn" id="postEditBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button><button class="icon-btn" id="postDeleteBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg></button>`
+    : `<div style="width:34px;"></div>`;
+
+  const isLiked = liked.has(pt.id), isFav = favorited.has(pt.id);
+  let bodyHtml = '';
+
+  if(pt.kind === 'ringtone'){
+    bodyHtml = `
+      <div class="ring-row">
+        <button class="ring-play" id="ringPlayBtn" aria-label="试听">
+          <svg id="ringPlayIcon" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8 5.5v13l11-6.5z"/></svg>
+        </button>
+        <div class="ring-meta">
+          <div id="ringTime">点一下试听</div>
+          <div class="ring-bar"><i id="ringBarFill"></i></div>
+        </div>
+      </div>
+      <audio id="ringAudio" src="${esc(pt.url)}" preload="none" crossorigin="anonymous"></audio>
+      <p class="field-help" style="margin-top:10px;">音频由发布者提供的链接直接播放。想保存的话长按下面的链接复制。</p>
+      <div class="field-label">链接</div>
+      <div class="key-row"><input class="field-input" id="ringUrlInput" readonly value="${esc(pt.url)}"><button class="icon-btn" id="ringCopyBtn" aria-label="复制">复制</button></div>`;
+  } else if(pt.kind === 'avatar_frame'){
+    bodyHtml = `
+      ${avatarFrameUiHtml('af')}
+      <p class="field-help">合成图只在你自己手机上生成，不会上传。想分享给别人看效果，直接发这张图就行。</p>
+      <div class="field-label">头像框原图链接（下载用）</div>
+      <div class="key-row"><input class="field-input" id="afUrlInput" readonly value="${esc(pt.url)}"><button class="icon-btn" id="afCopyBtn" aria-label="复制">复制</button></div>`;
+  } else if(pt.kind === 'tutorial'){
+    bodyHtml = `<div class="post-body">${esc(pt.body)}</div>`;
+  } else {
+    bodyHtml = `
+      ${pt.link ? `<div class="field-label">链接</div>
+      <div class="key-row"><input class="field-input" id="guideUrlInput" readonly value="${esc(pt.link)}"><button class="icon-btn" id="guideCopyBtn" aria-label="复制">复制</button></div>
+      <div class="btn-row"><a class="btn-outline" href="${esc(pt.link)}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">打开链接</a></div>` : ''}
+      ${pt.credit ? `<div class="field-label">原作者 / 授权说明</div><div class="post-body" style="font-size:12.5px;">${esc(pt.credit)}</div>` : ''}
+      ${pt.body ? `<div class="field-label">补充</div><div class="post-body" style="font-size:12.5px;">${esc(pt.body)}</div>` : ''}
+      <div class="guide-note">指路请务必先取得原作者同意。如果不确定是否被允许转载，就只贴原作者的主页（小红书 / GitHub 等），让大家自己过去看，不要搬运内容本身。</div>`;
+  }
+
+  $('postDetailBody').innerHTML = `
+    <div style="margin-bottom:4px;">${postMetaHtml(pt)}</div>
+    <div class="action-row" style="margin-bottom:14px;">
+      <button class="action-btn ${isLiked?'active':''}" id="postLikeBtn">${heartIcon()}<span>${pt.like_count||0}</span></button>
+      <button class="action-btn ${isFav?'active':''}" id="postFavBtn">${bookmarkIcon()}<span>${isFav?'已收藏':'收藏'}</span></button>
+    </div>
+    ${bodyHtml}
+    <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--border-soft);">
+      <div class="field-label" style="margin-top:0;">使用权限</div>
+      <pre class="result-pre">${esc(permissionHeaderText({ allowRepost: pt.allow_repost, allowEdit: pt.allow_edit, otherPermission: pt.other_permission }))}</pre>
+    </div>`;
+
+  $('postLikeBtn').addEventListener('click', async ()=>{ await toggleLikeRemote(pt.id, 'post'); renderPostDetail('like'); renderAll(); });
+  $('postFavBtn').addEventListener('click', async ()=>{ await toggleFavoriteRemote(pt.id, 'post'); renderPostDetail('fav'); renderAll(); });
+  if(isOwner){
+    $('postEditBtn').addEventListener('click', ()=>openPostEditor(pt.kind, pt));
+    $('postDeleteBtn').addEventListener('click', ()=>{
+      openConfirmSheet('删除这条内容？', '删除之后无法恢复。', '删除', async ()=>{
+        const { error } = await sb.from('posts').delete().eq('id', pt.id);
+        if(error){ showToast('删除失败：'+error.message); return; }
+        $('postDetailOverlay').classList.remove('open');
+        showToast('已删除'); await loadPosts(); renderAll();
+      });
+    });
+  }
+  [['ringCopyBtn','ringUrlInput'], ['afCopyBtn','afUrlInput'], ['guideCopyBtn','guideUrlInput']].forEach(([btn,inp])=>{
+    const b = $(btn); if(!b) return;
+    b.addEventListener('click', async ()=>{
+      try{ await navigator.clipboard.writeText($(inp).value); showToast('已复制'); }catch(e){ showToast('复制失败'); }
+    });
+  });
+  if(pt.kind === 'ringtone') setupRingtone();
+  if(pt.kind === 'avatar_frame') setupAvatarFrame(pt.url, pt.title, 'af');
+}
+
+/* ---- 铃声试听 ---- */
+function stopRingtone(){
+  const a = $('ringAudio');
+  if(a){ try{ a.pause(); }catch(e){} }
+}
+function setupRingtone(){
+  const a = $('ringAudio'), btn = $('ringPlayBtn'), icon = $('ringPlayIcon');
+  const fill = $('ringBarFill'), time = $('ringTime');
+  const PLAY = '<path d="M8 5.5v13l11-6.5z"/>', PAUSE = '<path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/>';
+  const fmt = s => isFinite(s) ? `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}` : '--:--';
+  btn.addEventListener('click', ()=>{
+    if(a.paused){ a.play().catch(()=>showToast('播放失败，可能是链接失效或格式不支持')); }
+    else a.pause();
+  });
+  a.addEventListener('play',  ()=>{ icon.innerHTML = PAUSE; });
+  a.addEventListener('pause', ()=>{ icon.innerHTML = PLAY; });
+  a.addEventListener('ended', ()=>{ icon.innerHTML = PLAY; fill.style.width='0'; });
+  a.addEventListener('timeupdate', ()=>{
+    if(a.duration) fill.style.width = (a.currentTime/a.duration*100)+'%';
+    time.textContent = `${fmt(a.currentTime)} / ${fmt(a.duration)}`;
+  });
+  a.addEventListener('error', ()=>{ time.textContent = '这个链接播放不了'; });
+}
+
+/* ---- 头像框合成 ---- */
+// 底图（头像）画在下面、框画在上面，中间按形状裁一次。
+// 全程在本地 canvas 上完成，不上传任何东西。
+// 试戴那一坨（画布 + 缩放 + 形状 + 换头像 + 保存）详情页和发布页都要用，
+// 所以模板和逻辑都按 id 前缀参数化，两边共用一份，不复制第二遍。
+function avatarFrameUiHtml(p){
+  return `
+      <div class="af-stage" id="${p}Stage">
+        <canvas id="${p}Canvas" width="720" height="720"></canvas>
+        <div class="af-av-clip" id="${p}AvClip"><img class="af-av-img" id="${p}AvLayer" alt="" hidden></div>
+        <img class="af-layer af-frame-layer" id="${p}FrLayer" alt="" hidden>
+      </div>
+      <p class="af-hint">头像固定居中，只能选圆形还是方形；拖动、缩放调的是头像框，把框上的洞对准头像就行。<br>圆形 / 方形指的是<b>你的头像</b>会被裁成什么形状，头像框图片本身不会被裁。</p>
+      <p class="af-hint" id="${p}GifNote" hidden>这是动图：预览里会动，但保存下来的合成图是静态的（只有第一帧）。</p>
+      <div class="af-ctl"><label>缩放头像框</label><input type="range" id="${p}Zoom" min="40" max="400" value="100"></div>
+      <div class="btn-row">
+        <button class="btn-outline" id="${p}ShapeBtn">头像裁成圆形</button>
+        <button class="btn-outline" id="${p}PickBtn">换我的头像</button>
+      </div>
+      <input type="file" id="${p}FileInput" accept="image/*">
+      <div class="btn-row">
+        <button class="btn-solid" id="${p}SaveBtn">保存合成图</button>
+      </div>`;
+}
+
+
+const isGifUrl = u => /^data:image\/gif/i.test(u||'') || /\.gif($|[?#])/i.test(u||'');
+
+function setupAvatarFrame(url, title, p){
+  const cv = $(p+'Canvas'), ctx = cv.getContext('2d'), stage = $(p+'Stage');
+  const clip = $(p+'AvClip'), avLayer = $(p+'AvLayer'), frLayer = $(p+'FrLayer'), gifNote = $(p+'GifNote');
+  const S = cv.width;
+  const st = { avatar:null, frame:null, avatarSrc:'', scale:1, x:0, y:0, circle:false };
+
+  // 头像框画多大、画在哪。以"完整显示、长边贴齐画布"为基准（不裁边），
+  // 缩放滑块和拖动都在这个基准上叠加——头像框天生可能比头像大出一截，
+  // 允许明显超过画布，也允许缩得比画布小。
+  function frameGeom(img){
+    const base = Math.min(S/img.naturalWidth, S/img.naturalHeight);
+    const w = img.naturalWidth * base * st.scale, h = img.naturalHeight * base * st.scale;
+    return { w, h, x:(S-w)/2 + st.x, y:(S-h)/2 + st.y };
+  }
+
+  function draw(){
+    // 底色不填了：填了的话圆形模式下四角会被烤进导出的图里，
+    // 变成灰角而不是透明。预览时透出的是 .af-stage 自己的底色，看起来一样。
+    ctx.clearRect(0,0,S,S);
+    if(st.avatar){
+      // 头像固定居中铺满整块画布（按短边裁，不留白边），不再跟着缩放/拖动走，
+      // 唯一能调的是下面的圆形/方形开关
+      const base = Math.max(S/st.avatar.naturalWidth, S/st.avatar.naturalHeight);
+      const w = st.avatar.naturalWidth*base, h = st.avatar.naturalHeight*base;
+      ctx.save();
+      if(st.circle){ ctx.beginPath(); ctx.arc(S/2, S/2, S/2, 0, Math.PI*2); ctx.clip(); }
+      ctx.drawImage(st.avatar, (S-w)/2, (S-h)/2, w, h);
+      ctx.restore();
+    }
+    if(st.frame){
+      const g = frameGeom(st.frame);
+      ctx.drawImage(st.frame, g.x, g.y, g.w, g.h);
+      // 同一组数值换成百分比给预览图层用，画布尺寸怎么变都不用跟着改
+      const pc = v => (v*100/S)+'%';
+      frLayer.style.width = pc(g.w); frLayer.style.height = pc(g.h);
+      frLayer.style.left  = pc(g.x); frLayer.style.top    = pc(g.y);
+    }
+  }
+
+  function refreshGifNote(){
+    gifNote.hidden = !(isGifUrl(url) || isGifUrl(st.avatarSrc));
+  }
+
+  (async ()=>{
+    st.frame  = await loadImageForCanvas(url);
+    st.avatarSrc = getMyHdAvatar() || avatarDataUrl || DEFAULT_AVATAR_BASE;
+    st.avatar = await loadImageForCanvas(st.avatarSrc);
+    // 显示不需要跨域，只有导出需要。所以取不回来时预览退回原始地址，
+    // 至少还能看效果 —— 而不是整块空白，让人以为是链接填错了。
+    frLayer.src = st.frame ? st.frame.src : url;
+    frLayer.hidden = false;
+    if(st.avatar){ avLayer.src = st.avatar.src; avLayer.hidden = false; }
+    if(!st.frame) showToast('这个图床不允许跨域：能预览，但存不下合成图');
+    refreshGifNote();
+    draw();
+  })();
+
+  // 拖动移动头像框（不再是头像——头像现在是固定的那一层）
+  let dragging = false, lastX = 0, lastY = 0;
+  stage.addEventListener('pointerdown', e=>{
+    dragging = true; lastX = e.clientX; lastY = e.clientY;
+    stage.setPointerCapture(e.pointerId);
+  });
+  stage.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // 屏幕上挪 1px，画布上要挪 S/显示宽度 px，否则手感会飘
+    const k = S / stage.getBoundingClientRect().width;
+    st.x += (e.clientX - lastX) * k;
+    st.y += (e.clientY - lastY) * k;
+    lastX = e.clientX; lastY = e.clientY;
+    draw();
+  });
+  const endDrag = ()=>{ dragging = false; };
+  stage.addEventListener('pointerup', endDrag);
+  stage.addEventListener('pointercancel', endDrag);
+
+  $(p+'Zoom').addEventListener('input', e=>{ st.scale = e.target.value/100; draw(); });
+  $(p+'ShapeBtn').addEventListener('click', ()=>{
+    st.circle = !st.circle;
+    // 只裁头像那一层。头像框图片永远整张显示，不受这个开关影响
+    clip.classList.toggle('circle', st.circle);
+    $(p+'ShapeBtn').textContent = st.circle ? '头像裁成方形' : '头像裁成圆形';
+    draw();
+  });
+  $(p+'PickBtn').addEventListener('click', ()=>$(p+'FileInput').click());
+  $(p+'FileInput').addEventListener('change', async e=>{
+    const file = e.target.files && e.target.files[0];
+    if(!file) return;
+    // 本地选的图直接读成 data URI —— 同源，不存在跨域问题，也不会上传
+    const dataUrl = await new Promise(res=>{ const r = new FileReader(); r.onload = ()=>res(r.result); r.readAsDataURL(file); });
+    st.avatarSrc = dataUrl;
+    st.avatar = await loadImageForCanvas(dataUrl);
+    if(st.avatar){ avLayer.src = st.avatar.src; avLayer.hidden = false; }
+    // 换头像不影响头像框已经调好的缩放/位置，这两个现在是独立的两件事
+    refreshGifNote();
+    draw();
+    e.target.value = '';
+  });
+  $(p+'SaveBtn').addEventListener('click', async ()=>{
+    try{
+      const blob = await new Promise(res=>cv.toBlob(res, 'image/png'));
+      await shareOrDownloadImageBlob(blob, `${safeFilename(title||'头像框')}_头像.png`, title||'头像框');
+    }catch(e){
+      showToast('生成失败，可以直接截图保存');
+    }
+  });
+}
+
+
+// 发布/编辑头像框时先自己试戴一下 —— 图床不给跨域、或者框的透明区位置不对，
+// 在这一步就能看出来，不用等发出去别人来说“套不上”
+function openAvatarFrameTry(url, title){
+  $('afTryBody').innerHTML = avatarFrameUiHtml('aft') +
+    '<p class="field-help">这是别人打开你这条内容时看到的效果，预览只在本地生成，不会上传。' +
+    '如果这里一直是空白，多半是图床不允许跨域，换个图床再发。</p>';
+  $('afTryOverlay').classList.add('open');
+  setupAvatarFrame(url, title, 'aft');
+}
+$('afTryBackBtn').addEventListener('click', ()=>$('afTryOverlay').classList.remove('open'));
+
+/* ===================== 「其他」：发布 / 编辑 ===================== */
+// 发布页那个「其他」面板里的四个入口
+function renderPostKindPick(){
+  const wrap = $('pubPostKindPick'); if(!wrap) return;
+  wrap.innerHTML = POST_KINDS.map(k=>
+    `<button class="post-kind-btn" data-kind="${k.id}"><b>${esc(k.label)}</b><span>${esc(k.desc)}</span></button>`).join('');
+  wrap.querySelectorAll('.post-kind-btn').forEach(b=>{
+    b.addEventListener('click', ()=>openPostEditor(b.dataset.kind, null));
+  });
+}
+
+let editingPost = null;
+function openPostEditor(kind, existing){
+  editingPost = existing || null;
+  const st = {
+    kind,
+    title: existing ? existing.title : '',
+    url:   existing ? existing.url   : '',
+    body:  existing ? existing.body  : '',
+    link:  existing ? existing.link  : '',
+    credit:existing ? existing.credit: '',
+    tags:  existing ? asArray(existing.tags).slice() : [],
+    tagInput: '',
+    allowRepost: existing ? !!existing.allow_repost : false,
+    allowEdit:   existing ? !!existing.allow_edit   : false,
+    otherChecked: existing ? !!(existing.other_permission||'').trim() : false,
+    otherText:   existing ? (existing.other_permission||'') : '',
+  };
+  $('postEditorTitle').textContent = (existing ? '编辑' : '发布') + (POST_KIND_LABEL[kind]||'');
+  $('postEditorOverlay').classList.add('open');
+  draw();
+
+  // 每次重画前把还挂在 DOM 上的输入框值收回来，否则点一下勾选框，
+  // 正在打的字会被 innerHTML 重建冲掉（跟发布表情包那个 sheet 一个道理）
+  function sync(){
+    const g = id => $(id) ? $(id).value : null;
+    const v = g('peTitle');  if(v!==null) st.title = v;
+    const u = g('peUrl');    if(u!==null) st.url = u;
+    const b = g('peBody');   if(b!==null) st.body = b;
+    const l = g('peLink');   if(l!==null) st.link = l;
+    const c = g('peCredit'); if(c!==null) st.credit = c;
+    const t = g('peTagInput'); if(t!==null) st.tagInput = t;
+    const o = g('peOther');  if(o!==null) st.otherText = o;
+  }
+  function addTag(raw){
+    const v = String(raw==null?'':raw).trim().slice(0,20);
+    if(!v || st.tags.includes(v)) return;
+    if(st.tags.length >= TAG_MAX){ showToast(`最多添加 ${TAG_MAX} 个标签`); return; }
+    st.tags.push(v);
+  }
+
+  function draw(){
+    const checkSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
+    const suggestions = getAllKnownTags().filter(t=>!st.tags.includes(t)).slice(0,20);
+    let fields = '';
+    if(st.kind === 'ringtone'){
+      fields = `<div class="field-label">音频链接</div>
+        <input class="field-input" id="peUrl" placeholder="https://…  mp3 / m4a 等直链" value="${esc(st.url)}">
+        <p class="field-help">贴直链，不要贴网盘或播放页地址，否则试听放不出来。</p>`;
+    } else if(st.kind === 'avatar_frame'){
+      fields = `<div class="field-label">头像框图片链接</div>
+        <input class="field-input" id="peUrl" placeholder="https://…  建议透明底 PNG" value="${esc(st.url)}">
+        <div class="btn-row" style="margin-top:10px;"><button type="button" class="btn-outline" id="peTryBtn">试戴看看</button></div>
+        <p class="field-help">透明底的 PNG 效果最好，方形图。发之前先自己试戴一下，确认框能套上、图床也取得到图。别人可以套自己的头像预览、也能下载这张原图。</p>`;
+    } else if(st.kind === 'tutorial'){
+      fields = `<div class="field-label">正文</div>
+        <div class="composer"><textarea class="field" id="peBody" placeholder="写点什么…" style="min-height:200px;">${esc(st.body)}</textarea></div>
+        <p class="field-help">只发和airp相关的内容，无关内容会被删。禁止发引战、议论他人、评价作品相关内容，若出现将封号。</p>`;
+    } else {
+      fields = `<div class="field-label">链接</div>
+        <input class="field-input" id="peLink" placeholder="GitHub 项目，或原作者的小红书等主页" value="${esc(st.link)}">
+        <div class="field-label">原作者 / 授权说明</div>
+        <input class="field-input" id="peCredit" placeholder="例如：已获原作者 @xxx 同意分享" value="${esc(st.credit)}">
+        <div class="guide-note">分享开源项目前请先取得原作者同意。<b>不确定是否被允许的，就只贴原作者主页</b>（小红书 / GitHub 等），让大家自己过去找，不要搬运内容本身。</div>
+        <div class="field-label">补充（可选）</div>
+        <div class="composer"><textarea class="field" id="peBody" placeholder="想多说两句就写这里" style="min-height:90px;">${esc(st.body)}</textarea></div>`;
+    }
+
+    $('postEditorBody').innerHTML = `
+      <div class="field-label" style="margin-top:0;">标题</div>
+      <input class="field-input" id="peTitle" placeholder="给它起个名字" value="${esc(st.title)}">
+      ${fields}
+
+      <div class="field-label">标签（可选，最多 ${TAG_MAX} 个）</div>
+      <div class="tag-input-row" id="peTagRow">
+        ${st.tags.map(t=>`<span class="tag-chip-edit">${esc(t)}<button type="button" class="tag-del-btn" data-tag="${esc(t)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></span>`).join('')}
+        <input id="peTagInput" placeholder="${st.tags.length?'继续添加…':'输入标签后按回车'}" value="${esc(st.tagInput)}">
+      </div>
+      ${suggestions.length ? `<div class="chip-row" id="peTagSuggest" style="margin-top:8px;">${suggestions.map(t=>`<button type="button" class="chip" data-tag="${esc(t)}">${esc(t)}</button>`).join('')}</div>` : ''}
+
+      <div class="field-label">使用权限</div>
+      <div class="perm-list">
+        <div class="perm-row" id="peRepost"><div class="sel-check-inline ${st.allowRepost?'on':''}">${st.allowRepost?checkSvg:''}</div><span class="perm-label">允许二传</span></div>
+        <div class="perm-row" id="peEdit"><div class="sel-check-inline ${st.allowEdit?'on':''}">${st.allowEdit?checkSvg:''}</div><span class="perm-label">允许二改</span></div>
+        <div class="perm-row" id="peOtherRow"><div class="sel-check-inline ${st.otherChecked?'on':''}">${st.otherChecked?checkSvg:''}</div><span class="perm-label">其他</span></div>
+      </div>
+      ${st.otherChecked ? `<input class="field-input" id="peOther" placeholder="填写具体说明，例如：转载请注明出处" style="margin-top:8px;" value="${esc(st.otherText)}">` : ''}
+      <p class="hint" style="margin-top:6px;">不勾选任何一项，默认视为禁止二传二改。</p>
+
+      <div class="btn-row" style="margin-top:18px;"><button class="btn-solid" id="peSubmit">${editingPost?'确认保存':'确认发布'}</button></div>
+      <div style="height:24px;"></div>`;
+
+    const tagInput = $('peTagInput');
+    tagInput.addEventListener('input', e=>{ st.tagInput = e.target.value; });
+    tagInput.addEventListener('keydown', e=>{
+      if(e.key!=='Enter') return;
+      e.preventDefault(); sync(); addTag(st.tagInput); st.tagInput=''; draw();
+      const el = $('peTagInput'); if(el) el.focus();
+    });
+    $('peTagRow').querySelectorAll('.tag-del-btn').forEach(b=>{
+      b.addEventListener('click', ()=>{ sync(); st.tags = st.tags.filter(t=>t!==b.dataset.tag); draw(); });
+    });
+    const sug = $('peTagSuggest');
+    if(sug) sug.querySelectorAll('button[data-tag]').forEach(b=>{
+      b.addEventListener('click', ()=>{ sync(); addTag(b.dataset.tag); draw(); });
+    });
+    $('peRepost').addEventListener('click', ()=>{ sync(); st.allowRepost=!st.allowRepost; draw(); });
+    $('peEdit').addEventListener('click', ()=>{ sync(); st.allowEdit=!st.allowEdit; draw(); });
+    $('peOtherRow').addEventListener('click', ()=>{
+      sync(); st.otherChecked=!st.otherChecked; if(!st.otherChecked) st.otherText='';
+      draw(); if(st.otherChecked){ const el=$('peOther'); if(el) el.focus(); }
+    });
+    const other = $('peOther'); if(other) other.addEventListener('input', e=>{ st.otherText = e.target.value; });
+    const tryBtn = $('peTryBtn');
+    if(tryBtn) tryBtn.addEventListener('click', ()=>{
+      sync();                                   // 先把刚敲进去的链接收回来
+      if(!st.url.trim()){ showToast('先填头像框图片链接'); return; }
+      openAvatarFrameTry(st.url.trim(), st.title.trim() || '头像框');
+    });
+
+    $('peSubmit').addEventListener('click', submit);
+  }
+
+  async function submit(){
+    sync();
+    const title = st.title.trim();
+    if(!title){ showToast('请填写标题'); return; }
+    if((st.kind==='ringtone' || st.kind==='avatar_frame') && !st.url.trim()){ showToast('请填写链接'); return; }
+    if(st.kind==='tutorial' && !st.body.trim()){ showToast('请填写正文'); return; }
+    if(st.kind==='guide' && !st.link.trim()){ showToast('请填写链接'); return; }
+
+    const row = {
+      kind: st.kind,
+      title,
+      url: st.url.trim(),
+      body: st.body.trim(),
+      link: st.link.trim(),
+      credit: st.credit.trim(),
+      tags: st.tags.slice(),
+      allow_repost: st.allowRepost,
+      allow_edit: st.allowEdit,
+      other_permission: st.otherChecked ? st.otherText.trim() : '',
+    };
+    const btn = $('peSubmit'); btn.disabled = true; btn.textContent = editingPost ? '保存中…' : '发布中…';
+    let error;
+    if(editingPost){
+      ({ error } = await sb.from('posts').update(row).eq('id', editingPost.id));
+    } else {
+      // 作者昵称/头像在这里存一份快照，省掉一个 posts_with_author 视图
+      ({ error } = await sb.from('posts').insert(Object.assign({}, row, {
+        user_id: currentUserId,
+        author_nickname: currentUser,
+        author_avatar_url: avatarDataUrl || null,
+      })));
+    }
+    btn.disabled = false; btn.textContent = editingPost ? '确认保存' : '确认发布';
+    if(error){ showToast('保存失败：'+error.message); return; }
+    $('postEditorOverlay').classList.remove('open');
+    $('postDetailOverlay').classList.remove('open');
+    showToast(editingPost ? '已保存修改' : '已发布');
+    editingPost = null;
+    await loadPosts(); renderAll(); showPage('my');
+  }
+}
+$('postEditorBackBtn').addEventListener('click', ()=>{
+  $('postEditorOverlay').classList.remove('open');
+  editingPost = null;
+});
+
 /* ===================== fonts section ===================== */
 // 缓存 key 里带上 URL 的哈希：改了字体链接就是一个新 family，
 // 否则编辑后列表里还是显示旧字形，要刷新页面才更新。
@@ -3892,7 +4531,7 @@ function handleDeepLink(){
    要撤掉的话整段删除即可。 */
 (function(){
   const LAYER_IDS = ['detailOverlay','fontDetailOverlay','fontEditorOverlay','aiOverlay','settingsOverlay',
-                     'userProfileOverlay',
+                     'userProfileOverlay','postDetailOverlay','postEditorOverlay','afTryOverlay',
                      'dlSheetMask','pubSheetMask','confirmSheetMask','shareSheetMask','reportSheetMask',
                      'profileSheetMask','avatarCropMask','peekMask','fontLightboxMask',
                      'notifSheetMask'];
