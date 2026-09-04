@@ -534,7 +534,6 @@
 
         <div class="btn-row" style="margin-top:18px;">
           <button class="btn-outline" id="toggleImportBtn">从文本 / 文件导入</button>
-          <button class="btn-outline" id="openAiBtn">AI 生成描述</button>
         </div>
 
         <div class="panel" id="importPanel">
@@ -3131,11 +3130,9 @@ function createImportWidget(ids){
 createImportWidget({input:'impInput', file:'impFileInput', upload:'impUploadBtn', clear:'impClearBtn', stats:'impStats', total:'impTotal', list:'impList', add:'impAddBtn'});
 
 /* ===================== AI overlay open/close ===================== */
-$('openAiBtn').addEventListener('click', ()=>{
-  $('aiOverlay').classList.add('open');
-  renderAiPresetChips();
-  renderItemsList($('aiItemsList'));
-});
+// 「AI 生成描述」的入口按钮先撤了：功能不够好用，但底下那一整套（预设、
+// 生成、aiOverlay 本身）原样留着没动，想恢复就是把发布页那个按钮和这里的
+// 点击事件加回来两行的事，不用重写。
 $('aiBackBtn').addEventListener('click', ()=>{
   $('aiOverlay').classList.remove('open');
   renderPubItems();
