@@ -2987,6 +2987,9 @@ function openDownloadSheet(c){
   // 待描述包每张图可能有好几个候选词，这里记下这次下载各选了哪个。
   // 默认取写的人最多的那个，没人写就空着，用户可以在中间那一步自己填。
   const picks = new Map();
+  // 自己写的词默认只进自己的导出文件；勾了这个才顺手公开出去。
+  // 默认关着 —— 下载是为自己下的，公开是额外的选择，不该替人做主。
+  let shareMine = false;
   if(c.needsDesc) c.emojis.forEach(e=>picks.set(e.id, topDesc(e.id)));
   const descOf = e => c.needsDesc ? (picks.get(e.id) || '') : e.desc;
   $('dlSheetMask').classList.add('open');
@@ -3026,7 +3029,7 @@ function openDownloadSheet(c){
       $('dlSheetBox').innerHTML = `
         <div class="sheet-head"><span class="t">挑描述词（${chosen.length} 张）</span><button class="icon-btn" id="pkCloseBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
         <div class="sheet-scroll">
-          <p class="hint" style="margin-top:0;">每张图选一个喜欢的，也可以直接在输入框里写你自己的。留空的话导出时这一行就只有链接。</p>
+          <p class="hint" style="margin-top:0;">每张图选一个喜欢的，也可以直接在输入框里写你自己的。自己写的默认<b>只进你这次的导出文件</b>，别人看不到；想让大家也用上，勾一下最下面那一项。留空的话导出时这一行就只有链接。</p>
           ${chosen.map((e,i)=>{
             const groups = groupedDescs(e.id);
             const cur = picks.get(e.id) || '';
@@ -3043,7 +3046,36 @@ function openDownloadSheet(c){
             </div>`;
           }).join('')}
         </div>
-        <div class="sheet-footer"><button class="btn-solid" id="pkNextBtn">下一步 · 选择导出格式</button></div>`;
+        <div class="sheet-footer">
+          <div class="perm-row" id="pkShareRow" style="padding:0 0 10px; border-bottom:none;" hidden>
+            <div class="sel-check-inline" id="pkShareCheck" style="margin-top:0;"></div>
+            <span class="perm-label" id="pkShareLabel"></span>
+          </div>
+          <button class="btn-solid" id="pkNextBtn">下一步 · 选择导出格式</button>
+        </div>`;
+
+      // 自己手打的、库里还没有的词。选中别人已经写过的那个不算"我写的"，
+      // 那只是挑了一个候选，没什么可公开的。
+      function myNewOnes(){
+        const out = [];
+        chosen.forEach(e=>{
+          const t = String(picks.get(e.id)||'').trim();
+          if(!t) return;
+          const known = groupedDescs(e.id).some(g=>g.text.toLowerCase()===t.toLowerCase());
+          if(!known) out.push({ emoji:e, text:t });
+        });
+        return out;
+      }
+      // 输入框改动时不重画整块（会失焦），只把这一行的文案和显隐更新一下
+      function refreshShareRow(){
+        const n = myNewOnes().length;
+        $('pkShareRow').hidden = n === 0;
+        $('pkShareLabel').textContent = `把我自己写的 ${n} 条也公开给大家`;
+        $('pkShareCheck').classList.toggle('on', shareMine);
+        $('pkShareCheck').innerHTML = shareMine ? CHECK_SVG : '';
+      }
+      refreshShareRow();
+      $('pkShareRow').addEventListener('click', ()=>{ shareMine = !shareMine; refreshShareRow(); });
 
       $('pkCloseBtn').addEventListener('click', ()=>$('dlSheetMask').classList.remove('open'));
       $('dlSheetBox').querySelectorAll('.desc-chip').forEach(chip=>{
@@ -3056,13 +3088,27 @@ function openDownloadSheet(c){
       });
       // 输入框只更新数据不重画，否则打一个字就失焦
       $('dlSheetBox').querySelectorAll('.desc-pick-main input').forEach(inp=>{
-        inp.addEventListener('input', ()=>{ picks.set(chosen[Number(inp.dataset.i)].id, inp.value); });
+        inp.addEventListener('input', ()=>{
+          picks.set(chosen[Number(inp.dataset.i)].id, inp.value);
+          refreshShareRow();
+        });
       });
-      $('pkNextBtn').addEventListener('click', ()=>{
+      $('pkNextBtn').addEventListener('click', async ()=>{
         // 手打的内容还没进 picks 的（比如打完直接点按钮），先收一遍
         $('dlSheetBox').querySelectorAll('.desc-pick-main input').forEach(inp=>{
           picks.set(chosen[Number(inp.dataset.i)].id, inp.value.trim());
         });
+        const mine = myNewOnes();
+        if(shareMine && mine.length){
+          const btn = $('pkNextBtn'); btn.disabled = true; btn.textContent = '公开中…';
+          // 一条一条投。submitDesc 自己会处理"这个词你已经写过了"，
+          // 所以中间失败几条不影响其余的，也不该挡着下载继续走。
+          let done = 0;
+          for(const m of mine){ if(await submitDesc(m.emoji, m.text)) done++; }
+          btn.disabled = false; btn.textContent = '下一步 · 选择导出格式';
+          showToast(done ? `已公开 ${done} 条描述词` : '没有新的描述词被公开');
+          renderDetail(); renderAll();
+        }
         renderFormatStep();
       });
     }
