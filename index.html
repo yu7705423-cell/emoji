@@ -234,6 +234,23 @@
 .af-ctl .af-reset{flex-shrink:0;}
 
   .af-hint{font-size:11px; color:var(--text-faint); text-align:center; margin-top:8px; line-height:1.6;}
+
+  /* 待描述区 */
+  .wanted-flag{display:inline-block; font-size:10px; font-weight:700; line-height:1; padding:3px 5px; margin-right:5px; border-radius:4px; background:var(--ink); color:var(--ink-contrast); vertical-align:1px;}
+  /* 待描述包的表情格子可以点开写词，右上角标着已经有几个人写了 */
+  .emoji-cell.wanted{cursor:pointer;}
+  .desc-badge{position:absolute; top:4px; right:4px; min-width:16px; height:16px; padding:0 4px; border-radius:8px; background:var(--ink); color:var(--ink-contrast); font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center;}
+  .desc-badge.empty{background:var(--border); color:var(--text-faint);}
+  .emoji-caption.pending{color:var(--text-faint); font-style:italic;}
+  /* 一条描述词：文字 + 写的人数 */
+  .desc-chip{display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:999px; background:none; font-size:13px; color:var(--ink); cursor:pointer; text-align:left;}
+  .desc-chip.on{background:var(--ink); color:var(--ink-contrast); border-color:var(--ink);}
+  .desc-chip .n{font-size:10px; opacity:.65; flex-shrink:0;}
+  .desc-chip .t{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .desc-chip-row{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;}
+  .desc-pick-row{display:flex; gap:10px; align-items:center; padding:10px 0; border-bottom:1px solid var(--border-soft);}
+  .desc-pick-row > img{width:52px; height:52px; flex-shrink:0; object-fit:cover; border-radius:var(--radius-s); background:var(--bg-elev);}
+  .desc-pick-main{flex:1; min-width:0;}
   .af-ctl{display:flex; align-items:center; gap:10px; margin-top:12px;}
   .af-ctl label{font-size:11.5px; color:var(--text-dim); flex-shrink:0;}
   .af-ctl input[type=range]{flex:1; accent-color:var(--ink);}
@@ -306,6 +323,9 @@
   .type-toggle{display:flex; border:1px solid var(--border); border-radius:999px; padding:3px; gap:3px;}
   .type-toggle button{flex:1; padding:9px 0; border:none; background:none; border-radius:999px; font-size:13px; font-weight:700; color:var(--text-dim); cursor:pointer; transition:background .15s ease, color .15s ease;}
   .type-toggle button.active{background:var(--ink); color:var(--ink-contrast);}
+  /* 首页那一行除了切换条还挤着刷新/通知/搜索三个图标，320px 的屏（iPhone SE 一代）
+     分给切换条只剩 150px，四个三字标签会各自折成三行。窄屏收一下字号让它回到一行。 */
+  @media (max-width:340px){ .type-toggle button{font-size:11px; padding:8px 0;} }
   .toggle-search-row{display:flex; align-items:center; gap:10px; margin-top:14px;}
   .toggle-search-row .type-toggle{flex:1;}
   #homeRefreshBtn.spinning svg{animation:spin .7s linear infinite;}
@@ -468,6 +488,7 @@
           <button class="active" data-type="collections">表情包</button>
           <button data-type="fonts">字体</button>
           <button data-type="posts">其他</button>
+          <button data-type="wanted">待描述</button>
         </div>
         <button class="icon-btn" id="homeRefreshBtn" aria-label="刷新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v6h-6"/></svg></button>
         <button class="icon-btn" id="notifBtn" aria-label="通知" style="position:relative;">
@@ -494,6 +515,7 @@
           <button class="active" data-type="collections">表情包</button>
           <button data-type="fonts">字体</button>
           <button data-type="posts">其他</button>
+          <button data-type="wanted">待描述</button>
         </div>
         <button class="icon-btn" id="catSearchBtn" aria-label="搜索"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></button>
       </div>
@@ -555,6 +577,14 @@
           <div class="row-list" id="impList"></div>
           <div class="btn-row"><button class="btn-solid" id="impAddBtn">导入到上方列表</button></div>
         </div>
+
+        <div class="perm-list" style="margin-top:20px;">
+          <div class="perm-row" id="pubNeedsDescRow">
+            <div class="sel-check-inline" id="pubNeedsDescCheck"></div>
+            <span class="perm-label">这是待描述表情包</span>
+          </div>
+        </div>
+        <p class="hint" style="margin-top:6px;">勾上之后描述可以全部留空，作品会发到「待描述区」，由大家一起写描述词。</p>
 
         <div class="btn-row" style="margin-top:20px;"><button class="btn-solid" id="pubSubmitBtn">发布</button></div>
       </div>
@@ -831,6 +861,10 @@
   </div>
 
   <!-- download sheet -->
+  <div class="sheet-mask" id="descSheetMask">
+    <div class="sheet-box" id="descSheetBox"></div>
+  </div>
+
   <div class="sheet-mask" id="dlSheetMask">
     <div class="sheet-box" id="dlSheetBox"></div>
   </div>
@@ -924,6 +958,12 @@ const POST_KINDS = [
   { id:'tutorial',     label:'教程',   desc:'纯文字分享，写教程或经验' },
   { id:'guide',        label:'指路',   desc:'指路开源项目或原作者主页' },
 ];
+// 待描述区：每张表情收到的所有描述词，emoji_id -> [行]。
+// 存的是每一次投稿（保留是谁写的），展示时才按文字归并。
+let emojiDescs = new Map();
+// collections.needs_desc 这一列到底建了没有。loadCollections 里探测一次，
+// 发布/编辑时靠它决定要不要写这一列。
+let hasNeedsDescCol = false;
 const POST_KIND_LABEL = {};
 POST_KINDS.forEach(k=>{ POST_KIND_LABEL[k.id] = k.label; });
 // 头像框预览的默认底图，用户可以换成自己的头像
@@ -1195,9 +1235,18 @@ async function loadCollections(){
   // 列压根不存在）时这里直接吞掉错误——旧数据/旧库本来就应该退回安全默认值，
   // 不能因为这几个新字段让整个作品列表加载失败。
   const permByCollection = {};
+  const BASE_COLS = 'id, tags, allow_repost, allow_edit, other_permission';
   for(const chunk of chunkArray(ids, 100)){
-    const { data: rows, error: permErr } = await sb.from('collections')
-      .select('id, tags, allow_repost, allow_edit, other_permission').in('id', chunk);
+    // 先连 needs_desc 一起查。这一列还没建的时候整条 select 会失败，
+    // 那就退回只查标签/权限——不能因为待描述区的新列，把早就在用的
+    // 标签和权限一起拖成默认值。
+    let { data: rows, error: permErr } = await sb.from('collections')
+      .select(BASE_COLS + ', needs_desc').in('id', chunk);
+    if(permErr){
+      ({ data: rows, error: permErr } = await sb.from('collections').select(BASE_COLS).in('id', chunk));
+    } else {
+      hasNeedsDescCol = true;
+    }
     if(permErr){ console.warn('加载标签/权限失败（将使用默认值）：', permErr.message); continue; }
     (rows||[]).forEach(r=>{ permByCollection[r.id] = r; });
   }
@@ -1214,12 +1263,51 @@ async function loadCollections(){
       allowRepost: !!perm.allow_repost,
       allowEdit: !!perm.allow_edit,
       otherPermission: perm.other_permission || '',
+      needsDesc: !!perm.needs_desc,
       source: c.source || '',
       likeCount: c.like_count || 0,
       emojis: byCollection[c.id] || [],
       createdAt: new Date(c.created_at).getTime(),
     };
   });
+}
+// 待描述区的描述词。这张表只有待描述表情包会写进去，量很小，一次全取回来
+// 比按 collection 分批查简单得多，也省得每开一个详情页再打一次请求。
+// 表还没建（SQL 没跑）时静默退回空 —— 待描述区会是空的，其他功能一切照旧。
+async function loadEmojiDescs(){
+  const { data, error } = await fetchAllRows(()=> sb.from('emoji_descriptions')
+    .select('id, emoji_id, user_id, author_nickname, text, created_at')
+    .order('created_at', {ascending:true}).order('id', {ascending:true}));
+  if(error){ console.warn('加载描述词失败（待描述区将为空）：', error.message); emojiDescs = new Map(); return; }
+  const m = new Map();
+  (data||[]).forEach(r=>{ if(!m.has(r.emoji_id)) m.set(r.emoji_id, []); m.get(r.emoji_id).push(r); });
+  emojiDescs = m;
+}
+// 同一个词多人写 -> 归并成一条，记住人数和都有谁写的。
+// 归并键去掉大小写和前后空格，"笑死 " 和 "笑死" 算同一个词。
+// 归并放在这里而不是数据库，是因为"谁写的"在详情页要显示，存成计数就找不回来了。
+function groupedDescs(emojiId){
+  const rows = emojiDescs.get(emojiId) || [];
+  const byKey = new Map();
+  rows.forEach(r=>{
+    const text = String(r.text==null?'':r.text).trim();
+    if(!text) return;
+    const key = text.toLowerCase();
+    if(!byKey.has(key)) byKey.set(key, { text, count:0, authors:[], mine:false, myRowId:null, firstAt:r.created_at });
+    const g = byKey.get(key);
+    g.count++;
+    if(r.author_nickname) g.authors.push(r.author_nickname);
+    if(r.user_id === currentUserId){ g.mine = true; g.myRowId = r.id; }
+    if(String(r.created_at) < String(g.firstAt)) g.firstAt = r.created_at;
+  });
+  // 写的人多的排前面；一样多的按最早写的排。有个确定的顺序，
+  // 刷新之后位置才不会乱跳，下载时的默认选择也才稳定。
+  return Array.from(byKey.values()).sort((a,b)=> b.count-a.count || (String(a.firstAt)<String(b.firstAt) ? -1 : 1));
+}
+// 下载 / 卡片上默认用哪个词：写的人最多的那个。一个都没有就空着。
+function topDesc(emojiId){
+  const g = groupedDescs(emojiId);
+  return g.length ? g[0].text : '';
 }
 async function loadMyLikesFavorites(){
   // (collection_id, font_id) 在单个用户下唯一，用它做排序键翻页才稳
@@ -1232,7 +1320,7 @@ async function loadMyLikesFavorites(){
   else favorited = new Set((favRows||[]).flatMap(r=>[r.collection_id, r.font_id, r.post_id].filter(Boolean)));
 }
 async function loadAppData(){
-  await Promise.all([loadCollections(), loadMyLikesFavorites(), loadFonts(), loadPosts(), loadNotifications()]);
+  await Promise.all([loadCollections(), loadMyLikesFavorites(), loadFonts(), loadPosts(), loadNotifications(), loadEmojiDescs()]);
   renderProfileBits();
   renderAll();
   startAutoRefresh();
@@ -1259,7 +1347,7 @@ async function silentRefresh(force){
   const scroller = document.querySelector('.page-scroll');
   const scrollPos = scroller ? scroller.scrollTop : 0;
   try{
-    await Promise.all([loadCollections(), loadMyLikesFavorites(), loadFonts(), loadPosts(), loadNotifications()]);
+    await Promise.all([loadCollections(), loadMyLikesFavorites(), loadFonts(), loadPosts(), loadNotifications(), loadEmojiDescs()]);
     renderProfileBits();
     renderAll();
     if(scroller) scroller.scrollTop = scrollPos;
@@ -1293,6 +1381,16 @@ $('homeRefreshBtn').addEventListener('click', async ()=>{
 });
 
 /* ===================== remote mutations ===================== */
+// needs_desc 这一列是待描述区带来的。SQL 还没跑的库里它不存在，
+// 无脑塞进 insert/update 会让"发布普通表情包"这件早就在用的事情整个失败。
+// 所以：确认列存在（loadCollections 里那条 select 成功过）才写；
+// 没确认过但用户确实勾了待描述，仍然要写 —— 让它带着真实的
+// "column needs_desc does not exist" 报错失败，而不是悄悄发成普通表情包。
+function withNeedsDesc(row, needsDesc){
+  if(hasNeedsDescCol) return Object.assign({}, row, { needs_desc: !!needsDesc });
+  if(needsDesc)       return Object.assign({}, row, { needs_desc: true });
+  return row;
+}
 // PostgREST 批量插入后 .select() 的返回顺序在 SQL 层面没有任何保证，
 // 之前直接用 assets[i] 配 items[i]，一旦顺序不一致，描述就会整体挂到错的图上，
 // 而且完全不报错。改成按 source_url 配对，重复链接用队列依次取。
@@ -1311,11 +1409,11 @@ function mapAssetsToItems(items, assets){
   }
   return ids;
 }
-async function createCollectionRemote(title, category, items, source, tags, allowRepost, allowEdit, otherPermission){
-  const { data: coll, error: cErr } = await sb.from('collections').insert({
+async function createCollectionRemote(title, category, items, source, tags, allowRepost, allowEdit, otherPermission, needsDesc){
+  const { data: coll, error: cErr } = await sb.from('collections').insert(withNeedsDesc({
     title, category, source: source||null, user_id: currentUserId,
     tags: tags||[], allow_repost: !!allowRepost, allow_edit: !!allowEdit, other_permission: otherPermission||'',
-  }).select().single();
+  }, needsDesc)).select().single();
   if(cErr){ showToast('发布失败：'+cErr.message); return false; }
   // 合集行已经落库了，后面任何一步失败都必须把它清掉，
   // 否则首页会留下一个 0 个表情的空合集，所有人都看得见
@@ -1344,18 +1442,19 @@ async function createCollectionRemote(title, category, items, source, tags, allo
     showToast('图片保存结果对不上，请重试');
     return false;
   }
-  const emojiRows = items.map((it,i)=>({ collection_id: coll.id, image_asset_id: assetIds[i], description: it.desc.trim()||'未命名', sort_order:i, source: it.source ? it.source.trim() : null }));
+  // 待描述包的描述本来就该是空的，塞"未命名"会让每张图都带一个假描述
+  const emojiRows = items.map((it,i)=>({ collection_id: coll.id, image_asset_id: assetIds[i], description: it.desc.trim() || (needsDesc ? '' : '未命名'), sort_order:i, source: it.source ? it.source.trim() : null }));
   const { error: eErr } = await sb.from('emojis').insert(emojiRows);
   if(eErr){ await rollback(assetIds); showToast('保存表情失败：'+eErr.message); return false; }
   return true;
 }
 // 注意：下面这套是"尽力而为"的补偿式回滚。真正干净的做法是把整段
 // 挪进一个 Postgres 函数里用事务跑，客户端只调一次 RPC。
-async function updateCollectionRemote(id, title, category, items, source, tags, allowRepost, allowEdit, otherPermission){
-  const { error: uErr } = await sb.from('collections').update({
+async function updateCollectionRemote(id, title, category, items, source, tags, allowRepost, allowEdit, otherPermission, needsDesc){
+  const { error: uErr } = await sb.from('collections').update(withNeedsDesc({
     title, category, source: source||null,
     tags: tags||[], allow_repost: !!allowRepost, allow_edit: !!allowEdit, other_permission: otherPermission||'',
-  }).eq('id', id);
+  }, needsDesc)).eq('id', id);
   if(uErr){ showToast('保存失败：'+uErr.message); return false; }
 
   // 1) 先完整读出旧表情，失败时用来还原
@@ -1395,7 +1494,7 @@ async function updateCollectionRemote(id, title, category, items, source, tags, 
   }
 
   // 4) 插新表情；失败就把旧的塞回去，别让内容凭空消失
-  const emojiRows = items.map((it,i)=>({ collection_id:id, image_asset_id: pairedIds[i], description: it.desc.trim()||'未命名', sort_order:i, source: it.source ? it.source.trim() : null }));
+  const emojiRows = items.map((it,i)=>({ collection_id:id, image_asset_id: pairedIds[i], description: it.desc.trim() || (needsDesc ? '' : '未命名'), sort_order:i, source: it.source ? it.source.trim() : null }));
   const { error: eErr } = await sb.from('emojis').insert(emojiRows);
   if(eErr){
     let restored = false;
@@ -1443,17 +1542,29 @@ async function deleteCollectionRemote(id){
 // 第二个参数原来是布尔的 isFont。现在有三类内容，扩成"哪一类"：
 // true / 'font' -> 字体，'post' -> 其他，省略 -> 表情包。
 // true 和省略这两种老写法保持能用，现有调用点一个都不用改。
-function likeCol(kind){
-  return (kind === true || kind === 'font') ? 'font_id' : kind === 'post' ? 'post_id' : 'collection_id';
+// 点赞的目标有三种：表情包 / 字体 / 其他。这个参数历史上叫 isFont，
+// 传的却是 true | 'font' | 'post' | undefined 四种值 —— 下面几处写成 if(isFont)
+// 就出事了：'post' 是个非空字符串，恒为真，于是"其他"的点赞全都拐进了字体那一支，
+// 在 fonts 里找一个 post 的 id，永远找不到。后果是点赞数不动、作者收不到提醒。
+// 统一从这里归一化一次，别再让调用方各判各的。
+function likeKind(kind){
+  return (kind === true || kind === 'font') ? 'font' : kind === 'post' ? 'post' : 'collection';
 }
-function bumpLikeCount(id, isFont, delta){
-  if(isFont){
-    const f = fonts.find(x=>x.id===id);
-    if(f) f.like_count = Math.max(0, (f.like_count||0) + delta);
-  } else {
-    const c = collections.find(x=>x.id===id);
-    if(c) c.likeCount = Math.max(0, (c.likeCount||0) + delta);
-  }
+function likeTarget(id, kind){
+  const k = likeKind(kind);
+  const list = k === 'font' ? fonts : k === 'post' ? posts : collections;
+  return (list || []).find(x=>x.id===id) || null;
+}
+function likeCol(kind){
+  const k = likeKind(kind);
+  return k === 'font' ? 'font_id' : k === 'post' ? 'post_id' : 'collection_id';
+}
+function bumpLikeCount(id, kind, delta){
+  const t = likeTarget(id, kind);
+  if(!t) return;
+  // 表情包在前端映射成了 likeCount，字体和其他直接用库里的 like_count
+  if(likeKind(kind) === 'collection') t.likeCount  = Math.max(0, (t.likeCount||0)  + delta);
+  else                                t.like_count = Math.max(0, (t.like_count||0) + delta);
 }
 async function toggleLikeRemote(id, isFont){
   const col = likeCol(isFont);
@@ -1471,11 +1582,13 @@ async function toggleLikeRemote(id, isFont){
 // 点赞提醒：只在"点赞"（不是取消点赞）且不是给自己的作品点赞时写一条通知。
 // notifications 表需要另外在 Supabase 里建（见仓库里的 sql/notifications.sql），
 // 这里失败了就静默跳过，不能因为提醒写不进去就让点赞本身报错。
-async function notifyLike(id, isFont){
-  const ownerId = isFont ? (fonts.find(x=>x.id===id)||{}).user_id : (collections.find(x=>x.id===id)||{}).authorId;
+async function notifyLike(id, kind){
+  const t = likeTarget(id, kind);
+  // 表情包的作者字段在前端叫 authorId，字体和其他叫 user_id
+  const ownerId = t && (t.authorId || t.user_id);
   if(!ownerId || ownerId===currentUserId) return;
   const payload = { recipient_id: ownerId, actor_id: currentUserId, actor_nickname: currentUser, type:'like' };
-  payload[likeCol(isFont)] = id;
+  payload[likeCol(kind)] = id;
   const { error } = await sb.from('notifications').insert(payload);
   if(error) console.warn('写点赞提醒失败（可能还没建 notifications 表，见 sql/notifications.sql）：', error.message);
 }
@@ -1514,6 +1627,7 @@ function renderNotifBadge(){
 function notifTargetTitle(n){
   if(n.collection_id){ const c = collections.find(x=>x.id===n.collection_id); return c ? c.title : '一个表情包'; }
   if(n.font_id){ const f = fonts.find(x=>x.id===n.font_id); return f ? f.name : '一个字体'; }
+  if(n.post_id){ const pt = (posts||[]).find(x=>x.id===n.post_id); return pt ? pt.title : '一条内容'; }
   return '你的作品';
 }
 function timeAgo(ts){
@@ -1529,7 +1643,7 @@ function renderNotifSheet(){
     <div class="sheet-head"><span class="t">通知</span><button class="icon-btn" id="notifCloseBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
     <div class="sheet-scroll">
       ${notifications.length ? `<div class="row-list">${notifications.map(n=>`
-        <div class="row-item" data-notif-collection="${esc(n.collection_id||'')}" data-notif-font="${esc(n.font_id||'')}" style="cursor:pointer;">
+        <div class="row-item" data-notif-collection="${esc(n.collection_id||'')}" data-notif-font="${esc(n.font_id||'')}" data-notif-post="${esc(n.post_id||'')}" style="cursor:pointer;">
           <div class="row-main">
             <div style="font-size:13px;">❤️ ${authorLinkHtml(n.actor_id, n.actor_nickname||'有人')} 点赞了你的《${esc(notifTargetTitle(n))}》</div>
             <div style="font-size:11px; color:var(--text-dim); margin-top:2px;">${timeAgo(n.created_at)}</div>
@@ -1538,12 +1652,12 @@ function renderNotifSheet(){
     </div>
   `;
   $('notifCloseBtn').addEventListener('click', ()=>$('notifSheetMask').classList.remove('open'));
-  $('notifSheetBox').querySelectorAll('[data-notif-collection], [data-notif-font]').forEach(el=>{
+  $('notifSheetBox').querySelectorAll('[data-notif-collection], [data-notif-font], [data-notif-post]').forEach(el=>{
     el.addEventListener('click', (e)=>{
       if(e.target.closest('.author-link')) return;
-      const cid = el.dataset.notifCollection, fid = el.dataset.notifFont;
+      const cid = el.dataset.notifCollection, fid = el.dataset.notifFont, pid = el.dataset.notifPost;
       $('notifSheetMask').classList.remove('open');
-      if(cid) openDetail(cid); else if(fid) openFontDetail(fid);
+      if(cid) openDetail(cid); else if(fid) openFontDetail(fid); else if(pid) openPostDetail(pid);
     });
   });
 }
@@ -2234,13 +2348,24 @@ function thumbHtml(url){
     <div class="thumb-fallback"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/><circle cx="8.5" cy="8.5" r="1.2"/></svg></div>
   </div>`;
 }
-function emojiCellHtml(e){
-  return `<div class="emoji-cell">
+function emojiCellHtml(e, wanted){
+  // 待描述包：右上角标已经有几个人写了，标题位显示票数最高的那个词，
+  // 一个都没有就提示可以点进来写
+  const groups = wanted ? groupedDescs(e.id) : null;
+  const badge = wanted
+    ? `<div class="desc-badge ${groups.length?'':'empty'}">${groups.length}</div>` : '';
+  const caption = wanted
+    ? (groups.length
+        ? `<div class="emoji-caption">${esc(groups[0].text)}</div>`
+        : `<div class="emoji-caption pending">点一下写描述</div>`)
+    : `<div class="emoji-caption">${esc(e.desc)}</div>`;
+  return `<div class="emoji-cell${wanted?' wanted':''}" ${wanted?`data-emoji-id="${esc(e.id)}"`:''}>
     <div style="position:relative;">
       <img src="${esc(e.url)}" alt="" loading="lazy" referrerpolicy="no-referrer" ${FADE_ATTR} onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
       <div class="thumb-fallback" style="display:none;position:absolute;inset:0;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/><circle cx="8.5" cy="8.5" r="1.2"/></svg></div>
+      ${badge}
     </div>
-    <div class="emoji-caption">${esc(e.desc)}</div>
+    ${caption}
   </div>`;
 }
 function coverCellHtml(e, fadeAttr){
@@ -2351,11 +2476,16 @@ function tagRowHtml(tags){
   return `<div class="tag-row">${list.map(t=>`<span class="tag-chip">${esc(t)}</span>`).join('')}</div>`;
 }
 function collCardHtml(c){
+  // 待描述包在卡片上就把进度说清楚，不用点进去才知道还剩多少张没人写
+  const done = c.needsDesc ? c.emojis.filter(e=>(emojiDescs.get(e.id)||[]).length).length : 0;
+  const stat = c.needsDesc
+    ? `<span>已写 ${done} / ${c.emojis.length}</span>`
+    : `<span>${c.emojis.length} 个表情</span>`;
   return `<button class="coll-card" data-id="${esc(c.id)}">
     ${coverHtml(c.emojis)}
-    <div class="coll-name">${esc(c.title)}</div>
+    <div class="coll-name">${c.needsDesc?'<span class="wanted-flag">待描述</span>':''}${esc(c.title)}</div>
     <div class="coll-sub">${authorLinkHtml(c.authorId, c.author)} · ${esc(c.category)}</div>
-    <div class="coll-stats"><span>${c.emojis.length} 个表情</span><span>${heartIcon()}${c.likeCount}</span></div>
+    <div class="coll-stats">${stat}<span>${heartIcon()}${c.likeCount}</span></div>
     ${tagRowHtml(c.tags)}
   </button>`;
 }
@@ -2487,6 +2617,12 @@ function showPeek(id){
 }
 $('peekMask').addEventListener('click', ()=>{ $('peekMask').classList.remove('show'); });
 
+// 待描述包自己的描述是空的，能搜的只有大家写上去的词
+function wantedDescsMatch(c, q){
+  if(!c.needsDesc) return false;
+  return c.emojis.some(e => (emojiDescs.get(e.id)||[]).some(r => low(r.text).includes(q)));
+}
+
 /* ===================== home ===================== */
 let homeSort = 'new';
 let homeMode = 'collections';
@@ -2495,7 +2631,7 @@ document.querySelectorAll('#homeTypeToggle button').forEach(b=>{
     document.querySelectorAll('#homeTypeToggle button').forEach(x=>x.classList.remove('active'));
     b.classList.add('active');
     homeMode = b.dataset.type;
-    $('homeSectionTitle').textContent = homeMode==='fonts' ? '字体' : homeMode==='posts' ? '其他' : '作品';
+    $('homeSectionTitle').textContent = homeMode==='fonts' ? '字体' : homeMode==='posts' ? '其他' : homeMode==='wanted' ? '待描述' : '作品';
     renderHome();
   });
 });
@@ -2509,8 +2645,10 @@ function renderHome(){
     if(q) list = list.filter(f => low(f.name).includes(q) || low(f.category).includes(q) || low(f.display_text).includes(q) || low(f.author_nickname).includes(q));
     items = list.map(f=>({type:'font', data:f, sortKey: homeSort==='hot' ? (f.like_count||0) : new Date(f.created_at).getTime()}));
   } else {
-    let list = collections;
-    if(q) list = list.filter(c => low(c.title).includes(q) || low(c.category).includes(q) || low(c.author).includes(q) || c.emojis.some(e=>low(e.desc).includes(q)) || asArray(c.tags).some(t=>low(t).includes(q)));
+    // 待描述的作品不混进普通表情包列表 —— 它们描述是空的，混在一起搜也搜不到、
+    // 看着还像是发漏了。两边靠 needsDesc 各取各的。
+    let list = collections.filter(c => !!c.needsDesc === (homeMode==='wanted'));
+    if(q) list = list.filter(c => low(c.title).includes(q) || low(c.category).includes(q) || low(c.author).includes(q) || c.emojis.some(e=>low(e.desc).includes(q)) || wantedDescsMatch(c, q) || asArray(c.tags).some(t=>low(t).includes(q)));
     items = list.map(c=>({type:'collection', data:c, sortKey: homeSort==='hot' ? c.likeCount : c.createdAt}));
   }
   if(homeMode==='posts'){
@@ -2519,7 +2657,7 @@ function renderHome(){
     items = list.map(pt=>({type:'post', data:pt, sortKey: homeSort==='hot' ? (pt.like_count||0) : new Date(pt.created_at).getTime()}));
   }
   items.sort((a,b)=>b.sortKey-a.sortKey);
-  renderItemsGrid($('homeGrid'), items, q ? '没有找到相关内容，换个关键词试试' : (homeMode==='fonts'?'还没有字体':homeMode==='posts'?'还没有内容':'还没有作品'));
+  renderItemsGrid($('homeGrid'), items, q ? '没有找到相关内容，换个关键词试试' : (homeMode==='fonts'?'还没有字体':homeMode==='posts'?'还没有内容':homeMode==='wanted'?'还没有待描述的表情包':'还没有作品'));
 }
 $('homeSearch').addEventListener('input', renderHome);
 document.querySelectorAll('#homeSortRow .chip').forEach(c=>{
@@ -2545,6 +2683,7 @@ $('catSearch').addEventListener('input', renderCategory);
 function renderCategoryChips(){
   const wrap = $('catChipRow'); wrap.innerHTML='';
   // 「其他」下面没有分类，四种内容类型本身就是它的分类
+  // 待描述区跟普通表情包共用同一套分类
   const list = catMode==='fonts' ? FONT_CATEGORIES : catMode==='posts' ? POST_KINDS.map(k=>k.label) : CATEGORIES;
   const all = document.createElement('button'); all.className='chip'+(activeCategory===null?' active':''); all.textContent='全部';
   all.addEventListener('click',()=>{activeCategory=null; renderCategoryChips(); renderCategory();});
@@ -2563,8 +2702,9 @@ function renderCategory(){
     if(q){ list = list.filter(f=>low(f.name).includes(q) || low(f.display_text).includes(q) || low(f.author_nickname).includes(q)); }
     items = list.map(f=>({type:'font', data:f}));
   } else {
-    let list = activeCategory ? collections.filter(c=>c.category===activeCategory) : collections.slice();
-    if(q){ list = list.filter(c=>low(c.title).includes(q) || low(c.author).includes(q) || c.emojis.some(e=>low(e.desc).includes(q)) || asArray(c.tags).some(t=>low(t).includes(q))); }
+    let list = collections.filter(c => !!c.needsDesc === (catMode==='wanted'));
+    if(activeCategory) list = list.filter(c=>c.category===activeCategory);
+    if(q){ list = list.filter(c=>low(c.title).includes(q) || low(c.author).includes(q) || c.emojis.some(e=>low(e.desc).includes(q)) || wantedDescsMatch(c, q) || asArray(c.tags).some(t=>low(t).includes(q))); }
     items = list.map(c=>({type:'collection', data:c}));
   }
   if(catMode==='posts'){
@@ -2656,7 +2796,7 @@ function renderDetail(justToggled){
     <div class="detail-cover">${coverHtml(c.emojis)}</div>
     <div class="detail-meta">
       <div class="detail-title">${esc(c.title)}</div>
-      <div class="detail-sub">${authorLinkHtml(c.authorId, c.author)} · ${esc(c.category)} · ${c.emojis.length} 个表情${c.source?` · 来源：${esc(c.source)}`:''}</div>
+      <div class="detail-sub">${authorLinkHtml(c.authorId, c.author)} · ${esc(c.category)} · ${c.needsDesc ? `已写 ${c.emojis.filter(e=>(emojiDescs.get(e.id)||[]).length).length} / ${c.emojis.length}` : `${c.emojis.length} 个表情`}${c.source?` · 来源：${esc(c.source)}`:''}</div>
       ${tagRowHtml(c.tags)}
       <div class="action-row">
         <button class="action-btn ${isLiked?'active':''}" id="likeBtn">${heartIcon()}<span>${c.likeCount}</span></button>
@@ -2665,7 +2805,8 @@ function renderDetail(justToggled){
         <button class="action-btn" id="reportCollBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22V15"/></svg><span>举报</span></button>
       </div>
     </div>
-    <div class="emoji-grid">${c.emojis.map(emojiCellHtml).join('')}</div>
+    ${c.needsDesc ? `<p class="hint" style="margin:0 0 4px;">这是待描述表情包。点任意一张图写下你的描述词，也能看看别人都写了什么；下载时可以挑自己喜欢的那个。</p>` : ''}
+    <div class="emoji-grid">${c.emojis.map(e=>emojiCellHtml(e, c.needsDesc)).join('')}</div>
     <div class="detail-footer">
       ${isLiked
         ? `<button class="btn-solid" id="downloadAllBtn"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>下载全部</button>`
@@ -2676,6 +2817,14 @@ function renderDetail(justToggled){
   $('favBtn').addEventListener('click', async ()=>{ await toggleFavoriteRemote(c.id); renderDetail('fav'); renderAll(); });
   const likeHint = $('likeHintBtn'); if(likeHint) likeHint.addEventListener('click', async ()=>{ await toggleLikeRemote(c.id); renderDetail('like'); renderAll(); });
   const dlBtn = $('downloadAllBtn'); if(dlBtn) dlBtn.addEventListener('click', ()=>openDownloadSheet(c));
+  if(c.needsDesc){
+    $('detailBody').querySelectorAll('.emoji-cell.wanted').forEach(cell=>{
+      cell.addEventListener('click', ()=>{
+        const e = c.emojis.find(x=>x.id===cell.dataset.emojiId);
+        if(e) openDescSheet(c, e);
+      });
+    });
+  }
   $('reportCollBtn').addEventListener('click', ()=>openReportSheet('collection', c.id));
   $('shareCollBtn').addEventListener('click', ()=>{
     openShareSheet({
@@ -2731,6 +2880,7 @@ function cancelEditCollection(){
 function startEditCollection(c){
   const proceed = ()=>{
     editingCollectionId = c.id;
+    pubNeedsDesc = !!c.needsDesc; renderNeedsDescCheck();
     pubItems = c.emojis.map(e=>({id:e.id, url:e.url, desc:e.desc, status:'idle', source:e.source||'', sourceOpen: !!e.source}));
     if(!pubItems.length) pubItems=[{id:uid(),url:'',desc:'',status:'idle',source:''}];
     batchMode=false; batchSelected=new Set();
@@ -2746,9 +2896,99 @@ function startEditCollection(c){
   }
 }
 
+/* ===================== 待描述区：写 / 看描述词 ===================== */
+const DESC_MAX = 20;
+
+// 投一条描述词。同一个人对同一张图投同一个词会撞上唯一索引（23505），
+// 那不是错误，是"你已经写过了"，要分开提示，不能弹一句原始的数据库报错。
+async function submitDesc(emoji, raw){
+  const text = String(raw==null?'':raw).trim().slice(0, DESC_MAX);
+  if(!text){ showToast('先写点什么'); return false; }
+  const { data, error } = await sb.from('emoji_descriptions').insert({
+    emoji_id: emoji.id, user_id: currentUserId, author_nickname: currentUser, text,
+  }).select().single();
+  if(error){
+    if(error.code === '23505'){ showToast('你已经写过这个词了'); return false; }
+    showToast('提交失败：'+error.message); return false;
+  }
+  // 本地先补上，不用为了一条新词把全站描述重拉一遍
+  if(!emojiDescs.has(emoji.id)) emojiDescs.set(emoji.id, []);
+  emojiDescs.get(emoji.id).push(data);
+  return true;
+}
+async function deleteDesc(emojiId, rowId){
+  const { error } = await sb.from('emoji_descriptions').delete().eq('id', rowId);
+  if(error){ showToast('撤回失败：'+error.message); return false; }
+  emojiDescs.set(emojiId, (emojiDescs.get(emojiId)||[]).filter(r=>r.id!==rowId));
+  return true;
+}
+
+function openDescSheet(c, emoji){
+  let input = '';
+  $('descSheetMask').classList.add('open');
+  draw();
+
+  function draw(){
+    const groups = groupedDescs(emoji.id);
+    $('descSheetBox').innerHTML = `
+      <div class="sheet-head"><span class="t">写描述词</span><button class="icon-btn" id="descCloseBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+      <div class="sheet-scroll">
+        <div style="display:flex; justify-content:center; margin-bottom:12px;">
+          <img src="${esc(emoji.url)}" alt="" referrerpolicy="no-referrer" style="max-width:150px; max-height:150px; border-radius:var(--radius-s);" onerror="this.style.opacity=0">
+        </div>
+        <div class="field-label" style="margin-top:0;">大家写的（${groups.length}）</div>
+        ${groups.length ? `<div class="desc-chip-row">${groups.map((g,i)=>`
+          <span class="desc-chip${g.mine?' on':''}" data-i="${i}">
+            <span class="t">${esc(g.text)}</span>
+            ${g.count>1?`<span class="n">${g.count} 人</span>`:''}
+            ${g.mine?`<span class="n">· 我的，点一下撤回</span>`:''}
+          </span>`).join('')}</div>
+          <p class="field-help" style="margin-top:8px;">同一个词多个人写会合并成一条，后面标着有几个人也这么写。</p>`
+        : `<p class="hint" style="margin-top:0;">还没有人写过，你可以是第一个。</p>`}
+
+        <div class="field-label">写一个</div>
+        <div style="display:flex; gap:8px;">
+          <input class="field-input" id="descInput" style="flex:1;" maxlength="${DESC_MAX}" placeholder="不超过 ${DESC_MAX} 个字" value="${esc(input)}">
+          <button class="btn-solid" id="descAddBtn" style="width:auto; flex:0 0 auto; padding:0 16px;">提交</button>
+        </div>
+        <p class="field-help">写完大家都能看见，别人下载时可以选你写的这个。</p>
+      </div>`;
+
+    $('descCloseBtn').addEventListener('click', close);
+    const inp = $('descInput');
+    inp.addEventListener('input', e=>{ input = e.target.value; });
+    inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); add(); } });
+    $('descAddBtn').addEventListener('click', add);
+    $('descSheetBox').querySelectorAll('.desc-chip').forEach(chip=>{
+      chip.addEventListener('click', async ()=>{
+        const g = groups[Number(chip.dataset.i)];
+        // 只有自己写的那条能撤回；别人的点了没反应是对的
+        if(!g || !g.mine) return;
+        if(await deleteDesc(emoji.id, g.myRowId)){ showToast('已撤回'); after(); }
+      });
+    });
+  }
+  async function add(){
+    const el = $('descInput'); if(el) input = el.value;
+    const btn = $('descAddBtn'); btn.disabled = true;
+    const ok = await submitDesc(emoji, input);
+    btn.disabled = false;
+    if(!ok) return;
+    input = ''; showToast('已提交'); after();
+  }
+  // 描述数变了，格子上的角标、卡片上的进度、首页的搜索结果都要跟着刷
+  function after(){ draw(); renderDetail(); renderAll(); }
+  function close(){ $('descSheetMask').classList.remove('open'); }
+}
+
 /* ===================== download sheet: select -> choose format & export ===================== */
 function openDownloadSheet(c){
   let selected = new Set(c.emojis.map(e=>e.id));
+  // 待描述包每张图可能有好几个候选词，这里记下这次下载各选了哪个。
+  // 默认取写的人最多的那个，没人写就空着，用户可以在中间那一步自己填。
+  const picks = new Map();
+  if(c.needsDesc) c.emojis.forEach(e=>picks.set(e.id, topDesc(e.id)));
+  const descOf = e => c.needsDesc ? (picks.get(e.id) || '') : e.desc;
   $('dlSheetMask').classList.add('open');
   renderSelectStep();
 
@@ -2773,7 +3013,59 @@ function openDownloadSheet(c){
         renderSelectStep();
       });
     });
-    const next = $('dlNextBtn'); if(next) next.addEventListener('click', renderFormatStep);
+    const next = $('dlNextBtn');
+    if(next) next.addEventListener('click', c.needsDesc ? renderPickStep : renderFormatStep);
+  }
+
+  // 待描述包专有的一步：逐张挑一个描述词，或者自己写一个。
+  // 别人写的词只是候选，选哪个、要不要另写，完全是下载的人自己决定。
+  function renderPickStep(){
+    const chosen = c.emojis.filter(e=>selected.has(e.id));
+    draw();
+    function draw(){
+      $('dlSheetBox').innerHTML = `
+        <div class="sheet-head"><span class="t">挑描述词（${chosen.length} 张）</span><button class="icon-btn" id="pkCloseBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+        <div class="sheet-scroll">
+          <p class="hint" style="margin-top:0;">每张图选一个喜欢的，也可以直接在输入框里写你自己的。留空的话导出时这一行就只有链接。</p>
+          ${chosen.map((e,i)=>{
+            const groups = groupedDescs(e.id);
+            const cur = picks.get(e.id) || '';
+            return `<div class="desc-pick-row">
+              <img src="${esc(e.url)}" alt="" referrerpolicy="no-referrer" onerror="this.style.opacity=0">
+              <div class="desc-pick-main">
+                ${groups.length ? `<div class="desc-chip-row" style="margin-top:0;">${groups.map(g=>`
+                  <span class="desc-chip${g.text===cur?' on':''}" data-i="${i}" data-text="${esc(g.text)}">
+                    <span class="t">${esc(g.text)}</span>${g.count>1?`<span class="n">${g.count} 人</span>`:''}
+                  </span>`).join('')}</div>`
+                : `<p class="hint" style="margin:0 0 6px;">还没有人写过</p>`}
+                <input class="field-input" data-i="${i}" style="margin-top:8px;" maxlength="${DESC_MAX}" placeholder="或者自己写一个" value="${esc(cur)}">
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div class="sheet-footer"><button class="btn-solid" id="pkNextBtn">下一步 · 选择导出格式</button></div>`;
+
+      $('pkCloseBtn').addEventListener('click', ()=>$('dlSheetMask').classList.remove('open'));
+      $('dlSheetBox').querySelectorAll('.desc-chip').forEach(chip=>{
+        chip.addEventListener('click', ()=>{
+          const e = chosen[Number(chip.dataset.i)];
+          // 再点一下已选中的就取消，等于"这张我不要描述"
+          picks.set(e.id, picks.get(e.id) === chip.dataset.text ? '' : chip.dataset.text);
+          draw();
+        });
+      });
+      // 输入框只更新数据不重画，否则打一个字就失焦
+      $('dlSheetBox').querySelectorAll('.desc-pick-main input').forEach(inp=>{
+        inp.addEventListener('input', ()=>{ picks.set(chosen[Number(inp.dataset.i)].id, inp.value); });
+      });
+      $('pkNextBtn').addEventListener('click', ()=>{
+        // 手打的内容还没进 picks 的（比如打完直接点按钮），先收一遍
+        $('dlSheetBox').querySelectorAll('.desc-pick-main input').forEach(inp=>{
+          picks.set(chosen[Number(inp.dataset.i)].id, inp.value.trim());
+        });
+        renderFormatStep();
+      });
+    }
   }
 
   function renderFormatStep(){
@@ -2782,7 +3074,7 @@ function openDownloadSheet(c){
     let customSep = '|';
     const sep = () => fmt==='custom' ? customSep : FORMATS.find(f=>f.id===fmt).sep;
     const currentText = () => {
-      const mainLines = chosen.map(e=>`${e.desc}${sep()}${e.url}`).join('\n');
+      const mainLines = chosen.map(e=>`${descOf(e)}${sep()}${e.url}`).join('\n');
       const sources = new Set();
       if(c.source && c.source.trim()) sources.add(c.source.trim());
       chosen.forEach(e=>{ if(e.source && e.source.trim()) sources.add(e.source.trim()); });
@@ -2803,7 +3095,7 @@ function openDownloadSheet(c){
           </div>
           <div class="field-label">示例格式（可编辑后点"按示例"识别分隔符）</div>
           <div style="display:flex; gap:8px;">
-            <input class="field-input" id="fmtExampleInput" style="flex:1;" value="${esc((chosen[0]&&chosen[0].desc)||'真的服了')}${esc(sep())}${esc((chosen[0]&&chosen[0].url)||'https://example.com/a.png')}">
+            <input class="field-input" id="fmtExampleInput" style="flex:1;" value="${esc((chosen[0]&&descOf(chosen[0]))||'真的服了')}${esc(sep())}${esc((chosen[0]&&chosen[0].url)||'https://example.com/a.png')}">
             <button class="btn-outline" id="fmtUseExampleBtn" style="width:auto; white-space:nowrap; flex:0 0 auto; padding:0 12px;">按示例</button>
           </div>
           <div class="field-label">预览</div>
@@ -3470,6 +3762,18 @@ $('pfSaveBtn').addEventListener('click', ()=>{
 $('settingsBackBtn').addEventListener('click', ()=>{ $('settingsOverlay').classList.remove('open'); $('presetForm').classList.remove('open'); });
 
 /* ===================== publish: submit -> confirm sheet (name + category) ===================== */
+// 待描述表情包：描述留空，发出去让大家写。发布和编辑走的都是原来那套流程，
+// 只是多带一个标记位过去，所以不用再做一个"发布待描述"的面板。
+let pubNeedsDesc = false;
+const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
+function renderNeedsDescCheck(){
+  const el = $('pubNeedsDescCheck');
+  el.classList.toggle('on', pubNeedsDesc);
+  el.innerHTML = pubNeedsDesc ? CHECK_SVG : '';
+}
+$('pubNeedsDescRow').addEventListener('click', ()=>{ pubNeedsDesc = !pubNeedsDesc; renderNeedsDescCheck(); });
+renderNeedsDescCheck();
+
 $('pubSubmitBtn').addEventListener('click', ()=>{
   const validItems = pubItems.filter(it=>it.url.trim());
   if(!validItems.length){ showToast('至少需要一条图片 URL'); return; }
@@ -3624,11 +3928,12 @@ function openPublishSheet(){
       $('pubModalConfirmBtn').disabled = true;
       $('pubModalConfirmBtn').textContent = editing ? '保存中…' : '发布中…';
       if(editing){
-        const ok = await updateCollectionRemote(editing.id, finalTitle, finalCategory, validItems, finalSource, finalTags, allowRepost, allowEdit, finalOtherPermission);
+        const ok = await updateCollectionRemote(editing.id, finalTitle, finalCategory, validItems, finalSource, finalTags, allowRepost, allowEdit, finalOtherPermission, pubNeedsDesc);
         $('pubModalConfirmBtn').disabled = false;
         if(!ok){ $('pubModalConfirmBtn').textContent = '确认保存'; return; }
         editingCollectionId = null;
-        pubItems=[{id:uid(),url:'',desc:'',status:'idle',source:''}]; batchMode=false; batchSelected=new Set(); renderPubItems();
+        pubItems=[{id:uid(),url:'',desc:'',status:'idle',source:''}]; batchMode=false; batchSelected=new Set();
+        pubNeedsDesc=false; renderNeedsDescCheck(); renderPubItems();
         updateEditingBanner();
         $('importPanel').classList.remove('open'); $('toggleImportBtn').classList.remove('active');
         $('pubSheetMask').classList.remove('open');
@@ -3636,10 +3941,11 @@ function openPublishSheet(){
         await loadAppData();
         showPage('my');
       } else {
-        const ok = await createCollectionRemote(finalTitle, finalCategory, validItems, finalSource, finalTags, allowRepost, allowEdit, finalOtherPermission);
+        const ok = await createCollectionRemote(finalTitle, finalCategory, validItems, finalSource, finalTags, allowRepost, allowEdit, finalOtherPermission, pubNeedsDesc);
         $('pubModalConfirmBtn').disabled = false;
         if(!ok){ $('pubModalConfirmBtn').textContent = '确认发布'; return; }
-        pubItems=[{id:uid(),url:'',desc:'',status:'idle',source:''}]; batchMode=false; batchSelected=new Set(); renderPubItems();
+        pubItems=[{id:uid(),url:'',desc:'',status:'idle',source:''}]; batchMode=false; batchSelected=new Set();
+        pubNeedsDesc=false; renderNeedsDescCheck(); renderPubItems();
         $('importPanel').classList.remove('open'); $('toggleImportBtn').classList.remove('active');
         $('pubSheetMask').classList.remove('open');
         showToast('已发布');
