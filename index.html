@@ -653,7 +653,10 @@
         </div>
         <p class="hint" style="margin-top:6px;">勾上之后描述可以全部留空，作品会发到「待描述区」，由大家一起写描述词。</p>
 
-        <div class="btn-row" style="margin-top:20px;"><button class="btn-solid" id="pubSubmitBtn">发布</button></div>
+        <div class="btn-row" style="margin-top:20px;">
+          <button class="btn-outline" id="pubToRepoBtn">只存入仓库</button>
+          <button class="btn-solid" id="pubSubmitBtn">发布</button>
+        </div>
       </div>
 
       <div id="pubFontsPane" style="display:none; margin-top:16px;">
@@ -1750,10 +1753,12 @@ function linkifyNotice(text){
 function notifRowHtml(n){
   if(n.type === 'admin'){
     // 管理员通知：显示正文本身，不指向任何作品，所以整行不可点，
-    // 只有正文里的链接可点
+    // 只有正文里的链接可点。
+    // 抬头写死"来自 Yoww"，不用 actor_nickname —— 那存的是发信管理员账号的昵称，
+    // 昵称没设好时露出来的就是一串 uuid，收信的人既看不懂也不该看见。
     return `<div class="row-item">
       <div class="row-main">
-        <div class="notif-admin">📣 ${esc(n.actor_nickname || '管理员')}</div>
+        <div class="notif-admin">📣 来自 Yoww</div>
         <div class="notif-body">${linkifyNotice(n.body || '')}</div>
         <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">${timeAgo(n.created_at)}</div>
       </div>
@@ -3403,6 +3408,26 @@ async function saveDownloadToRepo(c, chosen, descOf){
   renderRepo();
   if(currentPageId === 'my') renderMy();
 }
+// 把发布页整理好的这批存进仓库。跟站内下载的分开：source 是 'mine'，
+// 落在「我的」那个 tab 里，以后还能一键上传；站内下载的那些一律不能再发布。
+// 判重在 repoAdd 里按 来源+链接 做，所以同一批存两次不会多出一份。
+async function saveMyWorkToRepo(pack, items, fallbackOrigin, folder){
+  if(!repoReady) return 0;
+  const rows = items
+    .filter(it=>it.url.trim())
+    .map(it=>({
+      source:'mine', url: it.url.trim(), desc: (it.desc||'').trim(),
+      pack: String(pack||'').trim(), folder: folder || '',
+      // 来源：这张图自己标了就用它的，没标才退回整批统一的那个
+      origin: (it.source || fallbackOrigin || '').trim(),
+    }));
+  const fresh = await repoAdd(rows);
+  if(!fresh.length) return 0;
+  if(repoCacheImages()) cacheRepoImages(fresh.map(r=>r.url));
+  renderRepo();
+  return fresh.length;
+}
+
 // 图片本体后台慢慢抓，不挡着用户。抓不到就算了——条目还在，链接还在，
 // 只是没有离线副本，不该因此报错打扰人。
 async function cacheRepoImages(urls){
@@ -5270,6 +5295,56 @@ $('pubSubmitBtn').addEventListener('click', ()=>{
   if(!validItems.length){ showToast('至少需要一条图片 URL'); return; }
   openPublishSheet();
 });
+
+// 只存仓库、不发布。发布页本来就是整理列表的地方，整理完只想自己留着的时候，
+// 原来得先发布出去、再进仓库把同一批链接重新导入一遍。
+$('pubToRepoBtn').addEventListener('click', ()=>{
+  const validItems = pubItems.filter(it=>it.url.trim());
+  if(!validItems.length){ showToast('至少需要一条图片 URL'); return; }
+  if(!repoReady){ showToast('当前浏览器不允许本地存储，仓库无法使用'); return; }
+  openPubToRepoSheet(validItems);
+});
+function openPubToRepoSheet(validItems){
+  let folder = '';   // 归入哪个分类，默认未分类
+  $('repoSheetMask').classList.add('open');
+  $('repoSheetBox').innerHTML = `
+    <div class="sheet-head"><span class="t">存入仓库（${validItems.length} 张）</span><button class="icon-btn" id="ptrClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+    <div class="sheet-scroll">
+      <div class="field-label" style="margin-top:0;">归入哪个分类</div>
+      <div class="chip-row" id="ptrFolderChips">
+        <button class="chip active" data-to="">未分类</button>
+        ${repoFolders.map(f=>`<button class="chip" data-to="${esc(f.id)}">${esc(f.name)}</button>`).join('')}
+      </div>
+      <div class="field-label">文件夹名称</div>
+      <input class="field-input" id="ptrPack" maxlength="20" placeholder="这一批的名称，留空则并入零散图片">
+      <p class="field-help">分类是你自己划分的大类，长期使用；文件夹是这一次存入的这一批。</p>
+      <div class="field-label">来源（可选）</div>
+      <input class="field-input" id="ptrOrigin" maxlength="20" placeholder="例如：小红书 @某某，留空则不填">
+      ${repoKnownOrigins().length ? `<div class="chip-row" id="ptrOriginChips" style="margin-top:8px;">${
+        repoKnownOrigins().map(o=>`<button class="chip" data-origin="${esc(o)}">${esc(o)}</button>`).join('')}</div>` : ''}
+      <p class="field-help">列表里单独填过来源的那几条，仍然用它们自己的。</p>
+      <p class="hint" style="margin-top:12px;">只保存在本机浏览器里，不会上传，别人看不到。存好后列表仍然留在发布页，想再发布出去随时可以。</p>
+    </div>
+    <div class="sheet-footer"><button class="btn-solid" id="ptrConfirm">存入仓库</button></div>`;
+  $('ptrClose').addEventListener('click', ()=>$('repoSheetMask').classList.remove('open'));
+  $('repoSheetBox').querySelectorAll('#ptrFolderChips [data-to]').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      folder = b.dataset.to;
+      $('repoSheetBox').querySelectorAll('#ptrFolderChips .chip').forEach(x=>x.classList.toggle('active', x===b));
+    });
+  });
+  $('repoSheetBox').querySelectorAll('#ptrOriginChips [data-origin]').forEach(b=>{
+    b.addEventListener('click', ()=>{ $('ptrOrigin').value = b.dataset.origin; });
+  });
+  $('ptrConfirm').addEventListener('click', async ()=>{
+    const btn = $('ptrConfirm');
+    btn.disabled = true; btn.textContent = '存入中…';
+    const n = await saveMyWorkToRepo($('ptrPack').value.trim(), validItems, $('ptrOrigin').value.trim(), folder);
+    $('repoSheetMask').classList.remove('open');
+    showToast(n ? `已存入仓库 ${n} 张` : '这些内容仓库里已经有了');
+    if(currentPageId === 'my') renderMy();
+  });
+}
 
 const TAG_MAX = 20;
 // 供"从已有标签中选择"用：全站所有作品里出现过的标签去重排序一份。
