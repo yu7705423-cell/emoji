@@ -255,7 +255,12 @@
   .af-hint{font-size:11px; color:var(--text-faint); text-align:center; margin-top:8px; line-height:1.6;}
 
   /* 管理员通知：正文要能读、链接要能点 */
-  .notif-admin{font-size:12px; font-weight:700; color:var(--text-dim);}
+  .notif-icon{width:15px; height:15px; flex-shrink:0;}
+  /* 心和喇叭跟着 emoji 一起换掉：emoji 每个系统长得都不一样，
+     跟这一页的线性图标凑一起总是格格不入 */
+  .notif-like-line{display:flex; align-items:flex-start; gap:7px; font-size:13px;}
+  .notif-like-line .notif-icon{margin-top:2px; color:var(--ink);}
+  .notif-admin{display:flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:var(--text-dim);}
   .notif-body{font-size:13px; line-height:1.7; margin-top:4px; white-space:pre-wrap; word-break:break-word;}
   .notif-body a{color:var(--ink); text-decoration:underline; text-underline-offset:2px;}
 
@@ -1758,7 +1763,7 @@ function notifRowHtml(n){
     // 昵称没设好时露出来的就是一串 uuid，收信的人既看不懂也不该看见。
     return `<div class="row-item">
       <div class="row-main">
-        <div class="notif-admin">📣 来自 Yoww</div>
+        <div class="notif-admin"><svg class="notif-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg><span>来自 Yoww</span></div>
         <div class="notif-body">${linkifyNotice(n.body || '')}</div>
         <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">${timeAgo(n.created_at)}</div>
       </div>
@@ -1766,7 +1771,7 @@ function notifRowHtml(n){
   }
   return `<div class="row-item" data-notif-collection="${esc(n.collection_id||'')}" data-notif-font="${esc(n.font_id||'')}" data-notif-post="${esc(n.post_id||'')}" style="cursor:pointer;">
     <div class="row-main">
-      <div style="font-size:13px;">❤️ ${authorLinkHtml(n.actor_id, n.actor_nickname||'有人')} 点赞了你的《${esc(notifTargetTitle(n))}》</div>
+      <div class="notif-like-line"><svg class="notif-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span>${authorLinkHtml(n.actor_id, n.actor_nickname||'有人')} 点赞了你的《${esc(notifTargetTitle(n))}》</span></div>
       <div style="font-size:11px; color:var(--text-dim); margin-top:2px;">${timeAgo(n.created_at)}</div>
     </div>
   </div>`;
