@@ -36,9 +36,6 @@
        jszip.min.js        https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js
        html2canvas.min.js  https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js
        supabase.min.js     https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js -->
-<script src="./jszip.min.js"></script>
-<script src="./html2canvas.min.js"></script>
-<script src="./supabase.min.js"></script>
 <style>
   :root{
     --bg:#FFFFFF; --bg-elev:#F7F7F7; --bg-hover:#EDEDED;
@@ -451,7 +448,12 @@
 
   /* auth: loading + join screens */
   #loadingOverlay{position:fixed; inset:0; z-index:120; background:var(--bg); display:flex; align-items:center; justify-content:center; max-width:480px; margin:0 auto;}
-  .boot-spin{width:24px; height:24px; border-radius:50%; border:2px solid var(--border); border-top-color:var(--text); animation:spin .8s linear infinite;}
+  .boot-box{display:flex; flex-direction:column; align-items:center; gap:14px;}
+  /* 字标先淡入：网慢的时候，先看到名字比先看到一个孤零零的圈让人安心 */
+  .boot-mark{font-size:26px; opacity:0; animation:bootIn .5s ease .05s forwards;}
+  .boot-spin{width:22px; height:22px; border-radius:50%; border:2px solid var(--border); border-top-color:var(--ink); animation:spin .8s linear infinite;}
+  .boot-tip{font-size:12px; color:var(--text-faint); opacity:0; animation:bootIn .5s ease .8s forwards;}
+  @keyframes bootIn{ to{ opacity:1; } }
   #joinOverlay{position:fixed; inset:0; z-index:110; background:var(--bg); display:none; flex-direction:column; justify-content:center; max-width:480px; margin:0 auto; padding:28px;}
   #joinOverlay.open{display:flex;}
   .join-error{font-size:12px; color:var(--text); font-weight:600; margin-top:10px; display:none; text-align:center;}
@@ -512,7 +514,13 @@
     </div>
   </div>
 
-  <div id="loadingOverlay"><div class="boot-spin"></div></div>
+  <div id="loadingOverlay">
+    <div class="boot-box">
+      <div class="wordmark boot-mark">Yoww</div>
+      <div class="boot-spin"></div>
+      <div class="boot-tip">正在连接…</div>
+    </div>
+  </div>
 
   <div id="joinOverlay">
     <div class="wordmark" style="font-size:28px; text-align:center; margin-bottom:6px;">Yoww</div>
@@ -1039,6 +1047,13 @@
   <div class="toast" id="toast"></div>
 </div>
 
+<!-- 这三个原来在 <head> 里，加起来 497KB，全是阻塞脚本 —— 浏览器要把它们
+     下完跑完才轮得到解析 <body>，而加载动画就在 body 里。结果就是"转圈本身
+     也要等一秒才出来"。
+     supabase 启动就要用，挪到这里：首屏 HTML 先解析、先画出加载动画，
+     再去下它。jszip 和 html2canvas 启动时压根用不上，改成用到时再下载。 -->
+<script src="./supabase.min.js"></script>
+
 <script>
 /* v29 相对 v28 的改动（全部集中在前端，数据库那边另有一份 SQL 要跑）：
    安全   字体卡片的 bg_color / font_size / letter_spacing 渲染前做了收口，
@@ -1182,6 +1197,7 @@ async function initAuth(){
     if(!session){
       $('loadingOverlay').style.display = 'none';
       $('joinOverlay').classList.add('open');
+      warmHeavyScripts();
       return;
     }
     currentUserId = session.user.id;
@@ -1204,6 +1220,7 @@ async function initAuth(){
     // 之前放在 loadAppData 里，发布完重新加载数据时又会弹一次详情页。
     handleDeepLink();
     $('loadingOverlay').style.display = 'none';
+    warmHeavyScripts();
   }catch(err){
     $('loadingOverlay').innerHTML = `<p class="hint" style="text-align:center; padding:0 24px;">连接失败：${esc(err.message||String(err))}<br>请检查网络后刷新重试。</p>`;
   }
@@ -1959,7 +1976,7 @@ async function makeCardImagesExportable(node){
   return Array.from(resolved.values()).filter(v=>!v).length;
 }
 async function renderCardToBlob(node){
-  if(typeof html2canvas === 'undefined') throw new Error('图片生成组件没加载成功，刷新页面再试');
+  await ensureHtml2Canvas();
   document.body.appendChild(node);
   try{
     // 顺序不能反：先把地址换成能用的，再等图加载
@@ -2427,9 +2444,37 @@ function parseLine(raw){
   return {desc, url, error: !url};
 }
 
+/* ===================== 按需加载重组件 ===================== */
+// jszip + html2canvas 加起来 289KB，而启动流程一个都用不到 —— 压缩只在
+// 下载表情包/导出备份时用，截图只在生成分享卡片时用。放在 <head> 里等于
+// 让每个只是想刷一刷首页的人，先为"可能会点到的功能"白屏几秒。
+const pendingScripts = new Map();
+function loadScriptOnce(src){
+  if(pendingScripts.has(src)) return pendingScripts.get(src);
+  const p = new Promise((resolve, reject)=>{
+    const el = document.createElement('script');
+    el.src = src;
+    el.onload = ()=>resolve();
+    // 失败要把 promise 从表里删掉，否则这一次网络抖动会让它这辈子都加载不了
+    el.onerror = ()=>{ pendingScripts.delete(src); reject(new Error('组件加载失败，请检查网络后重试')); };
+    document.head.appendChild(el);
+  });
+  pendingScripts.set(src, p);
+  return p;
+}
+const ensureJSZip = () => typeof JSZip !== 'undefined' ? Promise.resolve() : loadScriptOnce('./jszip.min.js');
+const ensureHtml2Canvas = () => typeof html2canvas !== 'undefined' ? Promise.resolve() : loadScriptOnce('./html2canvas.min.js');
+// 首屏忙完之后趁空把它俩悄悄拉下来，这样真点到下载/分享时不用再等。
+// 失败无所谓 —— 用到的时候还会再试一次。
+function warmHeavyScripts(){
+  const go = ()=>{ ensureJSZip().catch(()=>{}); ensureHtml2Canvas().catch(()=>{}); };
+  if(window.requestIdleCallback) requestIdleCallback(go, { timeout: 5000 });
+  else setTimeout(go, 3000);
+}
+
 /* ===================== docx read/write ===================== */
 async function readDocxText(file){
-  if(typeof JSZip === 'undefined') throw new Error('docx 组件没加载成功，刷新页面再试');
+  await ensureJSZip();
   const buf = await file.arrayBuffer();
   const zip = await JSZip.loadAsync(buf);
   const xml = await zip.file('word/document.xml').async('string');
@@ -2444,7 +2489,7 @@ async function readDocxText(file){
   return lines.join('\n');
 }
 async function buildDocxBlob(text){
-  if(typeof JSZip === 'undefined') throw new Error('docx 组件没加载成功，刷新页面再试');
+  await ensureJSZip();
   const lines = text.split('\n');
   // XML 1.0 不允许大部分控制字符。从网页/文档里粘来的文本很容易夹带一个，
   // 生成的 docx 不会报错，但 Word 打开时会说文件已损坏。
@@ -4042,8 +4087,8 @@ function repoPublishPicked(){
 // 放着几天不打开就可能被系统清掉。所以备份不是锦上添花，是必需品。
 // 备份包是个 zip：图片以原始二进制存在里面，不 base64，体积不虚胖。
 async function repoExportBackup(){
-  if(typeof JSZip === 'undefined'){ showToast('压缩组件未加载成功，请刷新页面后重试'); return; }
   showToast('正在打包…');
+  try{ await ensureJSZip(); }catch(e){ showToast(e.message); return; }
   try{
     const zip = new JSZip();
     const blobTypes = {};
@@ -4076,8 +4121,8 @@ async function repoExportBackup(){
 // 但已经在仓库里的东西一条都不会被删。换手机导回来、两台设备各存了一些，
 // 都是合并才对；覆盖的话一不小心就把这边攒的全冲没了。
 async function repoImportBackup(file){
-  if(typeof JSZip === 'undefined'){ showToast('压缩组件未加载成功，请刷新页面后重试'); return; }
   showToast('正在读取…');
+  try{ await ensureJSZip(); }catch(e){ showToast(e.message); return; }
   try{
     const zip = await JSZip.loadAsync(file);
     const mf = zip.file('manifest.json');
