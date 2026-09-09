@@ -1,0 +1,13 @@
+{
+  // Cloudflare Workers 的静态资源托管。没有这个文件，
+  // 后台那句 `npx wrangler deploy` 不知道要部署什么，会直接失败。
+  //
+  // index.html 必须留在仓库根目录 —— GitHub Pages 认的就是根目录的它，
+  // 两边要同时跑，所以这里的 directory 也只能是根目录，
+  // 靠 .assetsignore 把不该发出去的挡掉。
+  "name": "emoji",
+  "compatibility_date": "2026-09-09",
+  "assets": {
+    "directory": "./"
+  }
+}

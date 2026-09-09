@@ -1,0 +1,7 @@
+# 这些不是网站内容，别传上去
+.git
+.gitignore
+.assetsignore
+wrangler.jsonc
+wrangler.toml
+README.md
