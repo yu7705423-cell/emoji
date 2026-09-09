@@ -2403,6 +2403,14 @@ function openEditProfileSheet(){
 }
 
 /* ===================== line parsing (shared by import + AI) ===================== */
+// 从别的 App 复制来的整段链接，有时候换行已经被编码成 %0A / %0D%0A 了
+// （分享面板、图床的"复制全部"经常这么干）。那样粘进来整段只有一行，
+// 六条链接会被当成一条超长链接，最后只导入一张还打不开。
+// 合法链接里不会出现裸的 %0A，按它拆是安全的 —— 不按 https:// 拆，
+// 因为图片代理那种 ?url=https://... 的链接里本来就套着第二个 https://。
+function splitPastedLines(text){
+  return String(text == null ? '' : text).split(/\r\n|\r|\n|%0D%0A|%0A|%0D/i);
+}
 function parseLine(raw){
   const line = raw.trim();
   if(!line) return null;
@@ -3846,7 +3854,7 @@ function openRepoAddSheet(){
     const originVal = ($('raOrigin')?.value || '').trim();
     addPack = ($('raPack')?.value || '').trim().slice(0,20);
     // 复用发布页那套解析，格式认得的东西完全一致
-    const rows = text.split('\n').map(l=>l.trim()).filter(Boolean).map(parseLine)
+    const rows = splitPastedLines(text).map(l=>l.trim()).filter(Boolean).map(parseLine)
       .filter(r=>r.url && /^https?:\/\//i.test(r.url))
       .map(r=>({ source:'mine', url:r.url, desc:r.desc||'', folder:addFolder, pack:addPack, origin:originVal }));
     if(!rows.length){ showToast('未解析到有效链接'); return; }
@@ -4892,7 +4900,7 @@ function createImportWidget(ids){
         statsEl=$(ids.stats), totalEl=$(ids.total), listEl=$(ids.list), addBtn=$(ids.add);
 
   function parse(){
-    rows = input.value.split('\n').map(parseLine).filter(r=>r!==null);
+    rows = splitPastedLines(input.value).map(parseLine).filter(r=>r!==null);
     renderList();
   }
   function renderList(){
@@ -5687,7 +5695,7 @@ function avatarFrameUiHtml(p){
         <img class="af-layer af-frame-layer" id="${p}FrLayer" alt="" hidden>
       </div>
       <p class="af-hint">先选下面要调哪一层，再在图上拖动、用滑块缩放，两层各调各的。<br>圆形 / 方形只裁<b>你的头像</b>那一块，头像框整张显示、可以随便超出头像。</p>
-      <p class="af-hint" id="${p}GifNote" hidden>这是动图：预览里会动，但保存下来的合成图是静态的（只有第一帧）。</p>
+      <p class="af-hint" id="${p}GifNote" hidden>这是动图（GIF / 动态 WebP / APNG）：预览里会动，但保存下来的合成图是静态的，只有第一帧。</p>
       <div class="type-toggle" id="${p}Target" style="margin-top:12px;">
         <button type="button" data-af="frame" class="active">拖动头像框</button>
         <button type="button" data-af="avatar">拖动头像</button>
@@ -5709,6 +5717,47 @@ function avatarFrameUiHtml(p){
 
 
 const isGifUrl = u => /^data:image\/gif/i.test(u||'') || /\.gif($|[?#])/i.test(u||'');
+
+// 动图判定看文件头，不看后缀。后缀靠不住：.webp 里静态和动态都有，
+// 只认 .gif 的话动态 webp 一律漏报（"没提示，那应该能动吧"），
+// 而把 .webp 一并算进去又会把大量静态图误报成动图。
+function hasMultipleFrames(b){
+  if(!b || b.length < 16) return false;
+  const at = (i, sig) => {
+    for(let k=0;k<sig.length;k++) if(b[i+k] !== sig.charCodeAt(k)) return false;
+    return true;
+  };
+  const find = (sig, from, to) => {
+    const end = Math.min(b.length, to) - sig.length;
+    for(let i=from;i<=end;i++) if(at(i,sig)) return i;
+    return -1;
+  };
+  // GIF：每一帧前面都有一个图形控制扩展 21 F9 04，出现两次以上就是动的
+  if(at(0,'GIF8')){
+    let n = 0;
+    for(let i=0;i<b.length-2;i++){
+      if(b[i]===0x21 && b[i+1]===0xF9 && b[i+2]===0x04 && ++n > 1) return true;
+    }
+    return false;
+  }
+  // WebP：只有扩展格式带 ANIM 块的才是动图，块就紧跟在文件头后面
+  if(at(0,'RIFF') && at(8,'WEBP')) return find('ANIM', 12, 128) >= 0;
+  // APNG：acTL 块，按规范必须排在 IDAT 之前
+  if(b[0]===0x89 && at(1,'PNG')){
+    const idat = find('IDAT', 8, b.length);
+    return find('acTL', 8, idat < 0 ? b.length : idat) >= 0;
+  }
+  return false;
+}
+async function isAnimatedImage(url){
+  if(!url) return false;
+  const blob = await fetchImageBlob(url);
+  // 图床不给跨域时读不到字节，退回后缀 —— 起码 gif 还认得出来
+  if(!blob) return isGifUrl(url);
+  try{
+    return hasMultipleFrames(new Uint8Array(await blob.arrayBuffer()));
+  }catch(e){ return isGifUrl(url); }
+}
 
 function setupAvatarFrame(url, title, p){
   const cv = $(p+'Canvas'), ctx = cv.getContext('2d'), stage = $(p+'Stage');
@@ -5781,8 +5830,14 @@ function setupAvatarFrame(url, title, p){
     }
   }
 
-  function refreshGifNote(){
-    gifNote.hidden = !(isGifUrl(url) || isGifUrl(st.avatarSrc));
+  // 判定要读图片字节，是异步的；期间可能又换了一次头像，
+  // 用序号把过期的那次结果丢掉，免得旧结果盖掉新结果
+  let noteToken = 0;
+  async function refreshGifNote(){
+    const mine = ++noteToken;
+    const anim = await isAnimatedImage(url) || await isAnimatedImage(st.avatarSrc);
+    if(mine !== noteToken) return;
+    gifNote.hidden = !anim;
   }
 
   (async ()=>{
