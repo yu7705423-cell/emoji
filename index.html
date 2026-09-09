@@ -1341,17 +1341,7 @@ async function loadCollections(){
     .order('created_at', {ascending:false}).order('id', {ascending:true}));
   if(error){ showToast('加载作品失败：'+error.message); return; }
   const ids = (cols||[]).map(c=>c.id);
-  const byCollection = {};
-  for(const chunk of chunkArray(ids, 100)){
-    const { data: emojis, error: eErr } = await fetchAllRows(()=> sb.from('emojis')
-      .select('id, collection_id, description, sort_order, source, image_assets(source_url)')
-      .in('collection_id', chunk)
-      .order('sort_order', {ascending:true}).order('id', {ascending:true}));
-    if(eErr){ showToast('加载表情失败：'+eErr.message); continue; }
-    (emojis||[]).forEach(e=>{
-      (byCollection[e.collection_id] ||= []).push({ id:e.id, url:(e.image_assets&&e.image_assets.source_url)||'', desc:e.description, source:e.source||'' });
-    });
-  }
+
   // 标签 / 使用权限：collections_with_stats 是数据库里早就建好的视图，给
   // collections 表加列不会自动出现在视图里，所以单独从原表按 id 查一遍拼回去。
   // 查询失败（比如这几列的建表语句还没在 Supabase 里执行过、
@@ -1373,6 +1363,9 @@ async function loadCollections(){
     if(permErr){ console.warn('加载标签/权限失败（将使用默认值）：', permErr.message); continue; }
     (rows||[]).forEach(r=>{ permByCollection[r.id] = r; });
   }
+
+  const coverByCollection = await loadCovers(ids);
+
   collections = (cols||[]).map(c=>{
     const perm = permByCollection[c.id] || {};
     return {
@@ -1389,10 +1382,79 @@ async function loadCollections(){
       needsDesc: !!perm.needs_desc,
       source: c.source || '',
       likeCount: c.like_count || 0,
-      emojis: byCollection[c.id] || [],
+      emojiCount: Number(c.emoji_count) || 0,
+      cover: coverByCollection[c.id] || [],
+      // 表情明细改成点进详情页才拉。首页一张卡片只用得上前 4 张图和一个数字，
+      // 为它把全站每一条表情记录都下载一遍，是这个应用最大的一笔流量。
+      emojis: [],
+      emojisLoaded: false,
       createdAt: new Date(c.created_at).getTime(),
     };
   });
+
+  // 待描述包例外：卡片上要显示"已写 3 / 20"，那得知道每张图有没有人写过词。
+  // 这类包是少数，全量拉回来最简单，也让搜索仍然能搜到大家写的描述词。
+  await Promise.all(collections.filter(c=>c.needsDesc).map(c=>ensureEmojis(c)));
+}
+// 封面：一张卡片最多用 4 张图，预览弹层最多 6 张。
+// PostgREST 支持只给嵌套结果限条数，所以一次查询就能把"每个作品的前 6 张图"
+// 拿回来，而不用把每一条表情都下载一遍。
+// 这个写法依赖 PostgREST 的嵌套 limit，万一你的实例不支持，就退回旧办法
+// ——多花流量，但页面不会因此空掉。
+async function loadCovers(ids){
+  const byCollection = {};
+  if(!ids.length) return byCollection;
+  try{
+    const { data, error } = await fetchAllRows(()=> sb.from('collections')
+      .select('id, emojis(sort_order, image_assets(source_url))')
+      .order('id', {ascending:true})
+      .order('sort_order', {ascending:true, referencedTable:'emojis'})
+      .limit(6, { referencedTable:'emojis' }));
+    if(error) throw error;
+    (data||[]).forEach(r=>{
+      byCollection[r.id] = (r.emojis||[])
+        .map(e=>({ url:(e.image_assets && e.image_assets.source_url) || '' }))
+        .filter(e=>e.url);
+    });
+    return byCollection;
+  }catch(e){
+    console.warn('封面按需查询不可用，退回整包加载：', e && e.message);
+    for(const chunk of chunkArray(ids, 100)){
+      const { data, error } = await fetchAllRows(()=> sb.from('emojis')
+        .select('collection_id, sort_order, image_assets(source_url)')
+        .in('collection_id', chunk)
+        .order('sort_order', {ascending:true}).order('id', {ascending:true}));
+      if(error){ console.warn('封面加载失败：', error.message); continue; }
+      (data||[]).forEach(e=>{
+        const list = (byCollection[e.collection_id] ||= []);
+        const url = (e.image_assets && e.image_assets.source_url) || '';
+        if(url && list.length < 6) list.push({ url });
+      });
+    }
+    return byCollection;
+  }
+}
+// 某个作品的表情明细。点详情页、下载、编辑、生成分享卡片时才需要。
+// 拿到过就不再拿第二遍；同一个作品并发调用也只会发一次请求。
+const emojiFetches = new Map();
+async function ensureEmojis(c){
+  if(!c || c.emojisLoaded) return;
+  if(emojiFetches.has(c.id)) return emojiFetches.get(c.id);
+  const p = (async ()=>{
+    const { data, error } = await fetchAllRows(()=> sb.from('emojis')
+      .select('id, collection_id, description, sort_order, source, image_assets(source_url)')
+      .eq('collection_id', c.id)
+      .order('sort_order', {ascending:true}).order('id', {ascending:true}));
+    if(error){ showToast('加载表情失败：'+error.message); return; }
+    c.emojis = (data||[]).map(e=>({
+      id:e.id, url:(e.image_assets&&e.image_assets.source_url)||'', desc:e.description, source:e.source||'',
+    }));
+    c.emojisLoaded = true;
+    // 明细回来了，数字以它为准 —— 视图里的计数可能比刚发布的内容慢一拍
+    c.emojiCount = c.emojis.length;
+  })().finally(()=>emojiFetches.delete(c.id));
+  emojiFetches.set(c.id, p);
+  return p;
 }
 // 待描述区的描述词。这张表只有待描述表情包会写进去，量很小，一次全取回来
 // 比按 collection 分批查简单得多，也省得每开一个详情页再打一次请求。
@@ -2671,10 +2733,10 @@ function collCardHtml(c){
   // 待描述包在卡片上就把进度说清楚，不用点进去才知道还剩多少张没人写
   const done = c.needsDesc ? c.emojis.filter(e=>(emojiDescs.get(e.id)||[]).length).length : 0;
   const stat = c.needsDesc
-    ? `<span>已写 ${done} / ${c.emojis.length}</span>`
-    : `<span>${c.emojis.length} 个表情</span>`;
+    ? `<span>已写 ${done} / ${c.emojiCount}</span>`
+    : `<span>${c.emojiCount} 个表情</span>`;
   return `<button class="coll-card" data-id="${esc(c.id)}">
-    ${coverHtml(c.emojis)}
+    ${coverHtml(c.cover)}
     <div class="coll-name">${c.needsDesc?'<span class="wanted-flag">待描述</span>':''}${esc(c.title)}</div>
     <div class="coll-sub">${authorLinkHtml(c.authorId, c.author)} · ${esc(c.category)}</div>
     <div class="coll-stats">${stat}<span>${heartIcon()}${c.likeCount}</span></div>
@@ -2792,24 +2854,55 @@ function peekCardWidth(cols, rows){
 function showPeek(id){
   const c = collections.find(x=>x.id===id); if(!c) return;
   const avatarSrc = (c.authorId===currentUserId) ? (getMyHdAvatar() || avatarDataUrl) : c.authorAvatarUrl;
-  const { cols, rows } = peekLayout(c.emojis);
+  const { cols, rows } = peekLayout(c.cover);
   $('peekCard').style.maxWidth = peekCardWidth(cols, rows) + 'px';
   $('peekCard').innerHTML = `
-    <div>${peekCoverHtml(c.emojis)}</div>
+    <div>${peekCoverHtml(c.cover)}</div>
     <div class="peek-body">
       <div class="peek-head">
         <div class="peek-avatar">${avatarSrc?`<img src="${esc(avatarSrc)}">`:`<span>${esc(c.author.slice(0,1))}</span>`}</div>
         <div class="peek-author">${authorLinkHtml(c.authorId, c.author)}</div>
       </div>
       <div class="peek-title">${esc(c.title)}</div>
-      <div class="peek-stats"><span>${c.emojis.length} 个表情</span><span>${heartIcon()}${c.likeCount}</span></div>
+      <div class="peek-stats"><span>${c.emojiCount} 个表情</span><span>${heartIcon()}${c.likeCount}</span></div>
     </div>
   `;
   $('peekMask').classList.add('show');
 }
 $('peekMask').addEventListener('click', ()=>{ $('peekMask').classList.remove('show'); });
 
+// 搜表情的描述词。以前是把全站表情都放在内存里逐个比对 —— 明细现在不在本地了，
+// 交给数据库查一次。顺带的好处是几千个作品也不会把主线程卡住。
+// 待描述包的描述词不走这里：那类包的明细本来就全量加载着，wantedDescsMatch 直接筛。
+let descSearchQ = '';
+let descHitIds = new Set();
+let descSearchSeq = 0;
+let descSearchTimer = null;
+function scheduleDescSearch(raw, rerender){
+  const q = String(raw==null?'':raw).trim().toLowerCase();
+  if(q === descSearchQ) return;          // 没变就别重复查，也别把 rerender 拖成死循环
+  descSearchQ = q;
+  clearTimeout(descSearchTimer);
+  if(!q){ descHitIds = new Set(); return; }
+  descSearchTimer = setTimeout(async ()=>{
+    const mine = ++descSearchSeq;
+    // % 和 _ 在 like 里是通配符。中文描述词里基本不会用到，直接去掉，
+    // 免得用户打个下划线就把整库都匹配出来
+    const term = q.replace(/[%_\\]/g, '');
+    if(!term) return;
+    const { data, error } = await sb.from('emojis')
+      .select('collection_id').ilike('description', '%'+term+'%').limit(1000);
+    if(error){ console.warn('搜索描述词失败：', error.message); return; }
+    if(mine !== descSearchSeq) return;   // 打字快的时候，慢的那次结果作废
+    descHitIds = new Set((data||[]).map(r=>r.collection_id));
+    if(typeof rerender === 'function') rerender();
+  }, 250);
+}
 // 待描述包自己的描述是空的，能搜的只有大家写上去的词
+function descMatch(c, q){
+  if(c.emojisLoaded) return c.emojis.some(e=>low(e.desc).includes(q));
+  return descHitIds.has(c.id);
+}
 function wantedDescsMatch(c, q){
   if(!c.needsDesc) return false;
   return c.emojis.some(e => (emojiDescs.get(e.id)||[]).some(r => low(r.text).includes(q)));
@@ -2840,7 +2933,8 @@ function renderHome(){
     // 待描述的作品不混进普通表情包列表 —— 它们描述是空的，混在一起搜也搜不到、
     // 看着还像是发漏了。两边靠 needsDesc 各取各的。
     let list = collections.filter(c => !!c.needsDesc === (homeMode==='wanted'));
-    if(q) list = list.filter(c => low(c.title).includes(q) || low(c.category).includes(q) || low(c.author).includes(q) || c.emojis.some(e=>low(e.desc).includes(q)) || wantedDescsMatch(c, q) || asArray(c.tags).some(t=>low(t).includes(q)));
+    scheduleDescSearch(q, renderHome);
+    if(q) list = list.filter(c => low(c.title).includes(q) || low(c.category).includes(q) || low(c.author).includes(q) || descMatch(c, q) || wantedDescsMatch(c, q) || asArray(c.tags).some(t=>low(t).includes(q)));
     items = list.map(c=>({type:'collection', data:c, sortKey: homeSort==='hot' ? c.likeCount : c.createdAt}));
   }
   if(homeMode==='posts'){
@@ -2896,7 +2990,8 @@ function renderCategory(){
   } else {
     let list = collections.filter(c => !!c.needsDesc === (catMode==='wanted'));
     if(activeCategory) list = list.filter(c=>c.category===activeCategory);
-    if(q){ list = list.filter(c=>low(c.title).includes(q) || low(c.author).includes(q) || c.emojis.some(e=>low(e.desc).includes(q)) || wantedDescsMatch(c, q) || asArray(c.tags).some(t=>low(t).includes(q))); }
+    scheduleDescSearch(q, renderCategory);
+    if(q){ list = list.filter(c=>low(c.title).includes(q) || low(c.author).includes(q) || descMatch(c, q) || wantedDescsMatch(c, q) || asArray(c.tags).some(t=>low(t).includes(q))); }
     items = list.map(c=>({type:'collection', data:c}));
   }
   if(catMode==='posts'){
@@ -4274,10 +4369,14 @@ function renderMy(){
 
 /* ===================== detail overlay ===================== */
 let openId = null;
-function openDetail(id){
+async function openDetail(id){
   openId = id;
   $('detailOverlay').classList.add('open');
+  // 先按已有的封面画一版，再把明细补上 —— 不然网慢的时候点进来是一片空白
   renderDetail();
+  const c = collections.find(x=>x.id===id);
+  await ensureEmojis(c);
+  if(openId === id) renderDetail();
 }
 $('detailBackBtn').addEventListener('click', ()=>{ $('detailOverlay').classList.remove('open'); });
 function renderDetail(justToggled){
@@ -4299,10 +4398,10 @@ function renderDetail(justToggled){
     ? `<button class="icon-btn" id="editCollBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button><button class="icon-btn" id="deleteCollBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg></button>`
     : `<div style="width:34px;"></div>`;
   $('detailBody').innerHTML = `
-    <div class="detail-cover">${coverHtml(c.emojis)}</div>
+    <div class="detail-cover">${coverHtml(c.emojisLoaded ? c.emojis : c.cover)}</div>
     <div class="detail-meta">
       <div class="detail-title">${esc(c.title)}</div>
-      <div class="detail-sub">${authorLinkHtml(c.authorId, c.author)} · ${esc(c.category)} · ${c.needsDesc ? `已写 ${c.emojis.filter(e=>(emojiDescs.get(e.id)||[]).length).length} / ${c.emojis.length}` : `${c.emojis.length} 个表情`}${c.source?` · 来源：${esc(c.source)}`:''}</div>
+      <div class="detail-sub">${authorLinkHtml(c.authorId, c.author)} · ${esc(c.category)} · ${c.needsDesc ? `已写 ${c.emojis.filter(e=>(emojiDescs.get(e.id)||[]).length).length} / ${c.emojiCount}` : `${c.emojiCount} 个表情`}${c.source?` · 来源：${esc(c.source)}`:''}</div>
       ${tagRowHtml(c.tags)}
       <div class="action-row">
         <button class="action-btn ${isLiked?'active':''}" id="likeBtn">${heartIcon()}<span>${c.likeCount}</span></button>
