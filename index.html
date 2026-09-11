@@ -1890,6 +1890,53 @@ async function openNotifSheet(){
 }
 $('notifBtn').addEventListener('click', openNotifSheet);
 
+// 忘记密码时管理员会重置成一个临时密码，本人拿到之后得能自己改回来 ——
+// 不然「重置」等于把账号永久交给了管理员那张纸条。
+function openChangePwSheet(){
+  $('profileSheetMask').classList.remove('open');
+  $('confirmSheetBox').innerHTML = `
+    <div class="sheet-head"><span class="t">修改密码</span><button class="icon-btn" id="cpClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+    <div class="sheet-scroll">
+      <div class="field-label" style="margin-top:0;">当前密码</div>
+      <input class="field-input" id="cpOld" type="password" autocomplete="current-password" placeholder="管理员重置过的话，填那个临时密码">
+      <div class="field-label">新密码</div>
+      <input class="field-input" id="cpNew" type="password" autocomplete="new-password" placeholder="至少 6 位">
+      <div class="field-label">再输一次新密码</div>
+      <input class="field-input" id="cpNew2" type="password" autocomplete="new-password">
+      <p class="hint" id="cpError" style="display:none; color:#c0392b; margin-top:10px;"></p>
+      <p class="hint" style="margin-top:12px;">改完不用重新登录，这台设备上的登录状态会保留。</p>
+    </div>
+    <div class="sheet-footer"><button class="btn-solid" id="cpConfirm">确认修改</button></div>`;
+  $('confirmSheetMask').classList.add('open');
+  const fail = msg => { const e=$('cpError'); e.textContent=msg; e.style.display='block'; };
+  $('cpClose').addEventListener('click', ()=>$('confirmSheetMask').classList.remove('open'));
+  $('cpConfirm').addEventListener('click', async ()=>{
+    const oldPw = $('cpOld').value, newPw = $('cpNew').value, again = $('cpNew2').value;
+    $('cpError').style.display = 'none';
+    if(!oldPw) return fail('请填写当前密码');
+    if(newPw.length < 6) return fail('新密码至少 6 位');
+    if(newPw !== again) return fail('两次输入的新密码不一样');
+    if(newPw === oldPw) return fail('新密码不能和当前密码一样');
+    const btn = $('cpConfirm');
+    btn.disabled = true; btn.textContent = '提交中…';
+    try{
+      // 先用旧密码登一次，确认真的是本人 —— 光有登录状态不够：
+      // 手机借给别人、或者忘了退出登录的公共设备，都能直接改掉密码把人锁在外面
+      const { data:{ user } } = await sb.auth.getUser();
+      if(!user || !user.email) throw new Error('登录状态已失效，请重新登录');
+      const { error: authErr } = await sb.auth.signInWithPassword({ email: user.email, password: oldPw });
+      if(authErr) throw new Error('当前密码不对');
+      const { error } = await sb.auth.updateUser({ password: newPw });
+      if(error) throw new Error(error.message);
+      $('confirmSheetMask').classList.remove('open');
+      showToast('密码已修改');
+    }catch(e){
+      fail(e.message || '修改失败，请稍后再试');
+    }finally{
+      btn.disabled = false; btn.textContent = '确认修改';
+    }
+  });
+}
 async function saveProfileRemote(nickname, status, avatar){
   const { error } = await sb.from('users').update({ nickname, status_message: status, avatar_url: avatar }).eq('id', currentUserId);
   if(error){ showToast('保存失败：'+error.message); return false; }
@@ -2450,12 +2497,14 @@ function openEditProfileSheet(){
       <input class="field-input" id="profileNameInput" value="${esc(currentUser)}">
       <div class="field-label">状态消息</div>
       <input class="field-input" id="profileStatusInput" value="${esc(statusMessage)}" placeholder="输入状态消息" maxlength="40">
-      <div class="btn-row" style="margin-top:24px;"><button class="btn-outline" id="logoutBtn">退出登录</button></div>
+      <div class="btn-row" style="margin-top:24px;"><button class="btn-outline" id="changePwBtn">修改密码</button></div>
+      <div class="btn-row"><button class="btn-outline" id="logoutBtn">退出登录</button></div>
     </div>
     <div class="sheet-footer"><button class="btn-solid" id="profileSaveBtn">保存</button></div>
   `;
   $('profileSheetMask').classList.add('open');
   $('profileSheetCloseBtn').addEventListener('click', ()=>$('profileSheetMask').classList.remove('open'));
+  $('changePwBtn').addEventListener('click', openChangePwSheet);
   $('logoutBtn').addEventListener('click', ()=>{
     openConfirmSheet('退出登录', '退出后需要重新用账号密码登录。', '退出', async ()=>{
       await sb.auth.signOut();
