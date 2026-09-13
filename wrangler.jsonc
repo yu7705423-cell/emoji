@@ -7,7 +7,29 @@
   // 靠 .assetsignore 把不该发出去的挡掉。
   "name": "emoji",
   "compatibility_date": "2026-09-09",
+
+  // 上传接口。静态文件仍然由 assets 直接送，匹配不上的路径（也就是 /api/upload）
+  // 才会走到这个脚本里，所以加了它不影响原来的任何一个页面。
+  "main": "src/worker.js",
   "assets": {
     "directory": "./"
+  },
+
+  // 图片存这儿。bucket_name 要跟 Cloudflare 后台建的那个桶同名。
+  "r2_buckets": [
+    { "binding": "IMG", "bucket_name": "yoww-img" }
+  ],
+
+  "vars": {
+    // 图片对外的地址前缀，也就是绑在桶上的那个自定义域名。
+    // 数据库里存的是这个前缀拼出来的链接 —— 所以将来换存储只要改 DNS，
+    // 几万条记录一条都不用动。
+    "IMG_BASE": "https://img.yoww2026.cn",
+    "SUPABASE_URL": "https://mejkhrxqdlybfatzecsc.supabase.co",
+
+    // 这个 key 本来就是公开的 —— index.html 里就有一份，浏览器人人可见。
+    // 它只是用来标明「请求发给哪个项目」，真正的权限由 RLS 决定。
+    // 所以不必当密钥存，写在这儿反而少一步配置。
+    "SUPABASE_ANON_KEY": "sb_publishable_21TWA4F0KgENzkYF7TopFA_0G8mrbay"
   }
 }

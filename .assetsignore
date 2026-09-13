@@ -4,4 +4,7 @@
 .assetsignore
 wrangler.jsonc
 wrangler.toml
+# Worker 源码是给 wrangler 编译用的，不是网站内容。
+# 不挡的话它会被原样发到 /src/worker.js 上去。
+src
 README.md
