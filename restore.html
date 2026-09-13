@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yoww 备份拼合工具</title>
+<!--
+  这个文件是故意做成「单文件、零依赖、断网可用」的。
+  它存在的意义就是：当 Yoww 这个网站打不开、或者你不想再用它了的时候，
+  你仍然能靠自己把云端那堆碎片拼回一个能打开的 zip。
+  所以它绝不能依赖任何外部脚本、字体或接口。双击打开就能用。
+-->
+<style>
+  :root{ --bg:#fff; --elev:#F7F7F7; --line:#E6E6E6; --text:#222; --dim:#666; --faint:#999;
+         --ink:#111; --ok:#1E7F4F; --bad:#C0392B; }
+  *{box-sizing:border-box;}
+  body{margin:0; padding:28px 18px 60px; background:var(--bg); color:var(--text);
+    font:14px/1.75 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;}
+  .wrap{max-width:620px; margin:0 auto;}
+  h1{font-size:20px; margin:0 0 6px;}
+  .sub{color:var(--dim); font-size:13px; margin:0 0 24px;}
+  .step{border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:14px;}
+  .step h2{font-size:14px; margin:0 0 8px; display:flex; align-items:center; gap:8px;}
+  .num{width:20px; height:20px; border-radius:50%; background:var(--ink); color:#fff;
+    font-size:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+  p{margin:8px 0;}
+  .muted{color:var(--dim); font-size:12.5px;}
+  #drop{border:1.5px dashed var(--line); border-radius:12px; padding:30px 16px; text-align:center;
+    cursor:pointer; background:var(--elev); transition:border-color .15s, background .15s;}
+  #drop.hot{border-color:var(--ink); background:#F0F0F0;}
+  #drop b{display:block; font-size:15px; margin-bottom:4px;}
+  input[type=file]{display:none;}
+  table{width:100%; border-collapse:collapse; margin-top:12px; font-size:13px;}
+  th,td{text-align:left; padding:7px 6px; border-bottom:1px solid var(--line);}
+  th{color:var(--dim); font-weight:600; font-size:12px;}
+  td.st{white-space:nowrap;}
+  .ok{color:var(--ok);} .bad{color:var(--bad);} .wait{color:var(--faint);}
+  button.go{width:100%; padding:13px; border:none; border-radius:10px; background:var(--ink); color:#fff;
+    font-size:14px; font-weight:700; cursor:pointer; margin-top:14px;}
+  button.go:disabled{opacity:.35; cursor:default;}
+  .note{background:var(--elev); border-radius:10px; padding:12px 14px; font-size:12.5px; color:var(--dim); margin-top:12px;}
+  code{background:var(--elev); padding:1px 5px; border-radius:4px; font-size:12.5px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Yoww 备份拼合工具</h1>
+  <p class="sub">把云端备份的碎片拼回一个完整的 zip。全程在你自己的设备上完成，不会上传到任何地方，断网也能用。</p>
+
+  <div class="step">
+    <h2><span class="num">1</span>把备份文件夹整个下载下来</h2>
+    <p class="muted">到你的 GitHub 备份仓库 → <code>yoww-backup</code> 文件夹。仓库首页右上角 <b>Code → Download ZIP</b> 是最省事的，下完解压。</p>
+    <p class="muted">里面应该有一个 <code>manifest.json</code> 和若干个 <code>chunk-000.bin</code>、<code>chunk-001.bin</code>…</p>
+  </div>
+
+  <div class="step">
+    <h2><span class="num">2</span>把这些文件全都拖进来</h2>
+    <div id="drop">
+      <b>拖文件到这里</b>
+      <span class="muted">或者点这里选择 · 把 manifest.json 和所有 chunk 一起选上</span>
+    </div>
+    <input type="file" id="file" multiple>
+    <div id="report"></div>
+  </div>
+
+  <div class="step">
+    <h2><span class="num">3</span>拼合并下载</h2>
+    <p class="muted" id="hint">等着你先把文件放进来。</p>
+    <button class="go" id="go" disabled>拼合并下载 zip</button>
+  </div>
+
+  <div class="note">
+    <b>拿到 zip 之后怎么用：</b>回到 Yoww → 我的 → 我的仓库 → 右上角齿轮 → 导入备份，选这个 zip 就行。<br><br>
+    <b>如果 Yoww 已经打不开了：</b>这个 zip 用任何解压软件都能打开。<code>items.json</code> 是你所有表情的记录（描述、链接、分类都在里面），<code>blobs/</code> 里是缓存过的图片原件，文件名对应 items.json 里的 id。
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let manifest = null;        // 清单（可能没有）
+let chunks = new Map();     // 文件名 -> File
+let verdicts = new Map();   // 文件名 -> {ok, msg}
+
+function fmtSize(n){
+  if(n < 1024) return n + ' B';
+  if(n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+  return (n/1024/1024).toFixed(2) + ' MB';
+}
+async function sha256Hex(buf){
+  // file:// 下个别浏览器不给 crypto.subtle。校验不了就跳过，
+  // 但要说清楚是跳过了，而不是让人以为验过了。
+  if(!(window.crypto && crypto.subtle)) return null;
+  try{
+    const d = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(d)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }catch(e){ return null; }
+}
+
+async function take(fileList){
+  // 必须先拷成数组再动。FileList 是活的：调用方一清空 input，
+  // 这个列表就跟着空了 —— 而下面第一个 await 之后就轮到它清空了，
+  // 结果就是只认到第一个文件，后面的分片全丢。
+  const files = Array.from(fileList || []);
+  for(const f of files){
+    if(/^manifest\.json$/i.test(f.name)){
+      try{ manifest = JSON.parse(await f.text()); }
+      catch(e){ manifest = null; alert('manifest.json 读不出来，可能下载不完整。没有它也能拼，但就没法校验了。'); }
+    } else if(/\.bin$/i.test(f.name) || /^chunk-/i.test(f.name)){
+      chunks.set(f.name, f);
+    }
+  }
+  await verify();
+  render();
+}
+
+async function verify(){
+  verdicts = new Map();
+  if(!manifest || !Array.isArray(manifest.chunks)) return;
+  for(const c of manifest.chunks){
+    const f = chunks.get(c.name);
+    if(!f){ verdicts.set(c.name, { ok:false, msg:'缺这一块' }); continue; }
+    if(typeof c.bytes === 'number' && f.size !== c.bytes){
+      verdicts.set(c.name, { ok:false, msg:`大小不对（应为 ${fmtSize(c.bytes)}，实际 ${fmtSize(f.size)}）` });
+      continue;
+    }
+    const hex = await sha256Hex(await f.arrayBuffer());
+    if(hex === null){ verdicts.set(c.name, { ok:true, msg:'大小正确（这台设备上没法算校验码）' }); continue; }
+    verdicts.set(c.name, hex === c.sha256 ? { ok:true, msg:'完整' } : { ok:false, msg:'内容损坏' });
+  }
+}
+
+function sortedNames(){
+  // 有清单就按清单的顺序，这是唯一权威的顺序。
+  // 没清单只能按文件名排 —— chunk-000 这种补零过的名字排出来正好是对的。
+  if(manifest && Array.isArray(manifest.chunks)) return manifest.chunks.map(c=>c.name);
+  return [...chunks.keys()].sort();
+}
+
+function render(){
+  const names = sortedNames();
+  if(!names.length){ $('report').innerHTML = ''; $('go').disabled = true; return; }
+  const rows = names.map(n=>{
+    const f = chunks.get(n);
+    const v = verdicts.get(n);
+    let cls = 'wait', txt = f ? '已放入' : '还没放进来';
+    if(v){ cls = v.ok ? 'ok' : 'bad'; txt = (v.ok ? '✓ ' : '✗ ') + v.msg; }
+    else if(f){ cls = 'ok'; txt = '已放入'; }
+    return `<tr><td>${n}</td><td>${f ? fmtSize(f.size) : '—'}</td><td class="st ${cls}">${txt}</td></tr>`;
+  }).join('');
+  $('report').innerHTML = `<table><tr><th>分片</th><th>大小</th><th>状态</th></tr>${rows}</table>`;
+
+  const missing = names.filter(n=>!chunks.has(n));
+  const broken = names.filter(n=>{ const v = verdicts.get(n); return v && !v.ok && chunks.has(n); });
+  let hint, ready = false;
+  if(!manifest){
+    hint = `没有 manifest.json，只能按文件名顺序拼（共 ${names.length} 块）。<b>拼出来的 zip 建议验证一下能不能正常解开。</b>`;
+    ready = true;
+  } else if(missing.length){
+    hint = `还缺 ${missing.length} 块：${missing.join('、')}。把它们也拖进来。`;
+  } else if(broken.length){
+    hint = `有 ${broken.length} 块对不上：${broken.join('、')}。<b>多半是没下全，重新下载一次那几个文件。</b>`;
+  } else {
+    const total = manifest.totalBytes ? fmtSize(manifest.totalBytes) : '';
+    hint = `${names.length} 块全部就位${total?`，合计 ${total}`:''}。可以拼了。`;
+    ready = true;
+  }
+  $('hint').innerHTML = hint;
+  $('go').disabled = !ready;
+}
+
+$('drop').addEventListener('click', ()=>$('file').click());
+$('file').addEventListener('change', e=>{ take(e.target.files); e.target.value=''; });
+['dragenter','dragover'].forEach(ev=>$('drop').addEventListener(ev, e=>{ e.preventDefault(); $('drop').classList.add('hot'); }));
+['dragleave','drop'].forEach(ev=>$('drop').addEventListener(ev, e=>{ e.preventDefault(); $('drop').classList.remove('hot'); }));
+$('drop').addEventListener('drop', e=>{ if(e.dataTransfer && e.dataTransfer.files) take(e.dataTransfer.files); });
+
+$('go').addEventListener('click', async ()=>{
+  const btn = $('go'); btn.disabled = true; btn.textContent = '拼合中…';
+  try{
+    const parts = [];
+    for(const n of sortedNames()){
+      const f = chunks.get(n);
+      if(!f) throw new Error('缺少 ' + n);
+      parts.push(await f.arrayBuffer());
+    }
+    const blob = new Blob(parts, { type:'application/zip' });
+    if(manifest && manifest.totalBytes && blob.size !== manifest.totalBytes){
+      throw new Error(`拼出来 ${fmtSize(blob.size)}，清单说应该是 ${fmtSize(manifest.totalBytes)} —— 对不上，先别用`);
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'Yoww我的仓库备份.zip';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);   // 大文件浏览器还没读完就回收会存不下来
+    $('hint').innerHTML = `已生成 <b>${fmtSize(blob.size)}</b> 的 zip，去下载文件夹里找。`;
+  }catch(e){
+    alert('拼合失败：' + (e.message || e));
+  }finally{
+    btn.disabled = false; btn.textContent = '拼合并下载 zip';
+  }
+});
+</script>
+</body>
+</html>

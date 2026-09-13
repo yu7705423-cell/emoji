@@ -4397,8 +4397,61 @@ async function cloudUpload(onProgress){
   say('正在写入清单…');
   await ghPut(cfg, `${CLOUD_DIR}/manifest.json`,
     bytesToB64(new TextEncoder().encode(JSON.stringify(manifest, null, 2))), 'Yoww 备份清单');
+  // 把「怎么自己拼回去」和拼合工具一起放进备份文件夹。
+  // 备份的意义是网站没了也能拿回东西 —— 那说明书和工具就不能只放在网站上。
+  say('正在写入说明…');
+  try{ await cloudPutHelpers(cfg, manifest); }
+  catch(e){ console.warn('说明文件写入失败（不影响备份本身）：', e && e.message); }
   await cloudSetCfg(Object.assign({}, cfg, { lastUpload: manifest.uploadedAt }));
   return manifest;
+}
+// 说明书 + 拼合工具。写失败不算备份失败：数据本身已经传完了。
+async function cloudPutHelpers(cfg, manifest){
+  const readme = [
+    '# Yoww 我的仓库 · 云备份',
+    '',
+    `最后备份：${manifest.uploadedAt}`,
+    `条目数：${manifest.itemCount}　·　总大小：${(manifest.totalBytes/1024/1024).toFixed(2)} MB　·　分 ${manifest.chunks.length} 块`,
+    '',
+    '## 这些文件是什么',
+    '',
+    '- `chunk-000.bin`、`chunk-001.bin`… —— 一个 zip 被按 5MB 切开的碎片。**单独一块打不开**，要按顺序首尾拼起来才是完整的 zip。',
+    '- `manifest.json` —— 目录：几块、什么顺序、每块多大、每块的校验码。',
+    '- `restore.html` —— 拼合工具，见下。',
+    '',
+    '## 怎么恢复',
+    '',
+    '**正常情况**：打开 Yoww → 我的 → 我的仓库 → 右上角齿轮 → 云备份 → 从云端恢复。不用管这些文件。',
+    '',
+    '**网站打不开了，或者你不想用它了**：',
+    '',
+    '1. 把这个文件夹整个下载下来（仓库首页 Code → Download ZIP，下完解压）',
+    '2. 双击打开 `restore.html`（它不联网，断网也能用）',
+    '3. 把 `manifest.json` 和所有 `chunk-*.bin` 一起拖进去',
+    '4. 点「拼合并下载 zip」',
+    '',
+    '拿到的 zip 用任何解压软件都能打开：`items.json` 是所有表情的记录（描述、链接、分类都在里面），`blobs/` 里是缓存过的图片原件，文件名对应 `items.json` 里的 id。',
+    '',
+    '## 命令行的拼法',
+    '',
+    '```',
+    '# macOS / Linux',
+    'cat chunk-*.bin > backup.zip',
+    '',
+    '# Windows PowerShell',
+    'cmd /c copy /b (Get-ChildItem chunk-*.bin | Sort-Object Name | % { $_.Name }) -join \'+\' backup.zip',
+    '```',
+    '',
+    '---',
+    '这个文件夹由 Yoww 自动维护，每次备份会覆盖。',
+  ].join('\n');
+  await ghPut(cfg, `${CLOUD_DIR}/README.md`,
+    bytesToB64(new TextEncoder().encode(readme)), 'Yoww 备份说明');
+  // 拼合工具从本站取一份传上去，这样备份文件夹是自足的
+  const res = await fetch('./restore.html', { cache:'no-cache' });
+  if(!res.ok) throw new Error('取不到 restore.html');
+  const html = await res.arrayBuffer();
+  await ghPut(cfg, `${CLOUD_DIR}/restore.html`, bytesToB64(new Uint8Array(html)), 'Yoww 备份拼合工具');
 }
 
 // 读文件必须用 raw 媒体类型：Contents 接口对超过 1MB 的文件返回的 JSON 里
