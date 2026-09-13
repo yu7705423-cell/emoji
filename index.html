@@ -275,6 +275,20 @@
   .notif-body{font-size:13px; line-height:1.7; margin-top:4px; white-space:pre-wrap; word-break:break-word;}
   .notif-body a{color:var(--ink); text-decoration:underline; text-underline-offset:2px;}
 
+  /* 从剪贴板打开分享链接的提示条。压在底部导航上面，不遮内容，
+     而且不是弹窗 —— 这件事没重要到要打断人 */
+  .clip-bar{position:fixed; left:10px; right:10px; bottom:-120px; max-width:460px; margin:0 auto; z-index:40;
+    display:flex; align-items:center; gap:10px; padding:11px 12px; border-radius:12px;
+    background:var(--bg); border:1px solid var(--border); box-shadow:0 8px 28px rgba(0,0,0,.16);
+    transition:bottom .28s cubic-bezier(.2,.8,.4,1);}
+  .clip-bar.show{bottom:calc(70px + env(safe-area-inset-bottom));}
+  .clip-bar > svg{width:18px; height:18px; flex-shrink:0; color:var(--text-dim);}
+  .clip-bar .t{flex:1; min-width:0; font-size:12.5px; line-height:1.4; font-weight:600;}
+  .clip-bar .t span{display:block; font-size:10.5px; font-weight:400; color:var(--text-faint); margin-top:2px; line-height:1.45;}
+  .clip-bar button{flex-shrink:0; border:none; border-radius:8px; padding:7px 12px; font-size:12px; font-weight:700;
+    background:var(--ink); color:var(--ink-contrast); cursor:pointer;}
+  .clip-bar button.no{background:transparent; color:var(--text-faint); padding:7px 4px; font-weight:500;}
+
   /* 私密留言：一件作品下面挂的是一段一段对话，不是一条公共评论流。
      作者看得到每一段，来留言的人只看得到自己那一段 —— 这件事是数据库
      那层保证的，下面这些样式只是把"这是私下说的"画出来，别让人误以为
@@ -649,7 +663,7 @@
         <button class="icon-btn" id="homeSearchBtn" aria-label="搜索"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></button>
       </div>
       <div id="homeSearchWrap" style="display:none; margin-top:10px;">
-        <input class="field-input" id="homeSearch" placeholder="搜索表情包、字体、其他或作者昵称">
+        <input class="field-input" id="homeSearch" placeholder="搜索作品、作者，或粘贴一条分享链接">
       </div>
       <div class="chip-row" id="homeSortRow" style="margin-top:10px;">
         <button class="chip active" data-sort="new">最新</button>
@@ -810,6 +824,14 @@
       </div>
       <div class="ig-grid-wrap" id="myGrid"></div>
     </div>
+  </div>
+
+  <!-- 从剪贴板打开分享链接：群里复制了链接回来时问一句 -->
+  <div class="clip-bar" id="clipBar">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/></svg>
+    <div class="t">从群里复制了作品链接？可以直接打开<span>只会在剪贴板里找 Yoww 的链接，内容不会被保存或上传</span></div>
+    <button id="clipBarGo">打开</button>
+    <button id="clipBarNo" class="no">不用</button>
   </div>
 
   <!-- tabbar -->
@@ -1332,6 +1354,13 @@ async function initAuth(){
     const later = () => { cloudAutoMaybeRun().catch(e=>console.warn('自动备份出错：', e)); };
     if(window.requestIdleCallback) requestIdleCallback(later, { timeout: 8000 });
     else setTimeout(later, 3000);
+
+    // 从群里复制完链接切回来，正是这一刻。开屏也看一眼 ——
+    // 有人是先复制再点开 app 的
+    setTimeout(()=>clipCheckOnFocus().catch(()=>{}), 900);
+    document.addEventListener('visibilitychange', ()=>{
+      if(document.visibilityState === 'visible') clipCheckOnFocus().catch(()=>{});
+    });
   }catch(err){
     $('loadingOverlay').innerHTML = `<p class="hint" style="text-align:center; padding:0 24px;">连接失败：${esc(err.message||String(err))}<br>请检查网络后刷新重试。</p>`;
   }
@@ -2469,6 +2498,17 @@ function showPage(id){
   // 却每个人每次都要付这份流量
   if(id === 'wish') ensureWishes();
 }
+// 往搜索框里粘一个作品链接就直接打开它。
+// 这条不经过剪贴板权限 —— iOS 不给持久授权，每次都要点系统的粘贴按钮，
+// 嫌烦的人可以走这里，长按粘贴一下就行
+$('homeSearch').addEventListener('input', e=>{
+  const link = parseYowwLink(e.target.value);
+  if(!link) return;
+  e.target.value = '';
+  $('homeSearchWrap').style.display = 'none';
+  renderHome();
+  openByLink(link);
+});
 $('homeSearchBtn').addEventListener('click', ()=>{
   const wrap=$('homeSearchWrap'); const opening = wrap.style.display==='none';
   wrap.style.display = opening ? 'block' : 'none';
@@ -7420,13 +7460,130 @@ $('fontEditorSubmitBtn').addEventListener('click', async ()=>{
 /* ---- deep link / share ---- */
 function handleDeepLink(){
   const params = new URLSearchParams(location.search);
-  const fontId = params.get('font');
-  const collId = params.get('collection');
-  if(fontId && fonts.find(f=>f.id===fontId)){
-    openFontDetail(fontId);
-  } else if(collId && collections.find(c=>c.id===collId)){
-    openDetail(collId);
+  for(const kind of ['collection','font','post','wish']){
+    const id = params.get(kind);
+    // 指向已删除的作品时会提示一句「这个作品已经不在了」。这里跟剪贴板那条路
+    // 不一样：点链接进来的人是奔着一个具体作品来的，直接落到首页什么都不说，
+    // 他只会以为链接坏了或者应用出了毛病
+    if(id){ try{ openByLink({ kind, id }); }catch(e){} return; }
   }
+}
+
+
+/* ===================== 从剪贴板打开分享链接 =====================
+   群里发的链接点开是在微信自己的浏览器里，安卓的应用链接跳转压根不会触发。
+   所以国内的做法是走剪贴板：复制链接 → 回到 app → 直接跳过去。
+
+   剪贴板里可能是别人的密码、验证码、私人对话。所以这里只做一件事：
+   在文本里找我们自己的作品链接。找到就跳，找不到就当没看见。
+   内容不存、不传、不写日志，函数一返回就没了。 */
+
+// 认自家的地址。别人的链接一律不碰 —— 就算剪贴板里是别的网站的东西，
+// 我们也不该对它做任何事
+const LINK_HOSTS = ['yoww2026.cn', 'www.yoww2026.cn', 'emoji.yu7705423.workers.dev'];
+function isYowwHost(host){
+  const h = String(host || '').toLowerCase();
+  return h === location.host.toLowerCase() || LINK_HOSTS.includes(h);
+}
+
+/**
+ * 从一段文本里找出第一个 Yoww 作品链接。
+ * 找不到返回 null。群里转发的文本常常是「看看这个 https://... 笑死我了」，
+ * 所以不能要求整段就是一个链接。
+ */
+function parseYowwLink(text){
+  const urls = String(text || '').match(/https?:\/\/[^\s<>"'）】]+/g);
+  if(!urls) return null;
+  for(const raw of urls){
+    let u;
+    try{ u = new URL(raw); }catch(e){ continue; }
+    if(!isYowwHost(u.host)) continue;
+    for(const k of ['collection', 'font', 'post', 'wish']){
+      const id = u.searchParams.get(k);
+      if(id) return { kind: k, id, href: u.href };
+    }
+  }
+  return null;
+}
+
+/** 跳到某个作品。找不到就说一声，不要静悄悄什么都不发生。 */
+function openByLink(link){
+  if(!link) return false;
+  const { kind, id } = link;
+  const gone = () => { showToast('这个作品已经不在了'); return false; };
+  if(kind === 'collection') return collections.find(c=>c.id===id) ? (openDetail(id), true) : gone();
+  if(kind === 'font')       return fonts.find(f=>f.id===id)       ? (openFontDetail(id), true) : gone();
+  if(kind === 'post')       return (posts||[]).find(p=>p.id===id) ? (openPostDetail(id), true) : gone();
+  if(kind === 'wish'){ openWishFromNotification(id); return true; }
+  return false;
+}
+
+const CLIP_ASKED_KEY = 'zhp_clip_asked_v1';   // 用户说过「不再提示」就别再烦他
+let clipBarShown = false;                     // 一次会话最多提一次
+let clipLastHandled = '';                     // 同一个链接不重复跳
+
+function clipAsked(){ try{ return localStorage.getItem(CLIP_ASKED_KEY) === '1'; }catch(e){ return false; } }
+function setClipAsked(){ try{ localStorage.setItem(CLIP_ASKED_KEY, '1'); }catch(e){} }
+
+/** 读一次剪贴板并尝试跳转。explicit 表示是用户主动点的，那样找不到要给个回音。 */
+async function clipTryOpen(explicit){
+  let text = '';
+  try{
+    text = await navigator.clipboard.readText();
+  }catch(e){
+    if(explicit) showToast('读不到剪贴板，可能是没给权限');
+    return false;
+  }
+  const link = parseYowwLink(text);
+  text = '';                                   // 用完就扔，别留在内存里
+  if(!link){
+    if(explicit) showToast('剪贴板里没有 Yoww 的作品链接');
+    return false;
+  }
+  if(link.href === clipLastHandled) return false;   // 刚跳过的那个别反复弹
+  clipLastHandled = link.href;
+  return openByLink(link);
+}
+
+function hideClipBar(){ const b = $('clipBar'); if(b) b.classList.remove('show'); }
+
+function showClipBar(){
+  const bar = $('clipBar'); if(!bar) return;
+  clipBarShown = true;
+  bar.classList.add('show');
+  $('clipBarGo').onclick = async ()=>{
+    hideClipBar();
+    // 这一下点击本身就是浏览器要的「用户手势」，权限弹窗也在这时候出现
+    await clipTryOpen(true);
+  };
+  $('clipBarNo').onclick = ()=>{ hideClipBar(); setClipAsked(); showToast('以后不再提示'); };
+}
+
+/**
+ * 回到 app 时看一眼。
+ *
+ * 已经拿到权限的（安卓 Chrome 授权之后就是这样）直接读，只有真的发现链接才弹条 ——
+ * 这时候它不是打扰，是「有人分享了东西给你」。
+ * 没权限的只提一次，问用户要不要开。iOS 不给持久授权，每次都要点一下系统的粘贴按钮，
+ * 所以那边永远走这条。
+ */
+async function clipCheckOnFocus(){
+  if(!navigator.clipboard || !navigator.clipboard.readText) return;
+  if(document.visibilityState !== 'visible') return;
+  if($('joinOverlay').classList.contains('open')) return;   // 还没登录就别凑热闹
+
+  let granted = false;
+  try{
+    const st = await navigator.permissions.query({ name: 'clipboard-read' });
+    granted = st.state === 'granted';
+  }catch(e){ /* Safari 没有这个查询，当作没授权 */ }
+
+  if(granted){
+    await clipTryOpen(false);
+    return;
+  }
+  if(clipAsked() || clipBarShown) return;
+  showClipBar();
 }
 
 /* ===================== 选图上传 =====================
