@@ -7325,32 +7325,48 @@ const UP_ENDPOINT   = '/api/upload';       // 跟网站同源，不牵扯跨域
 const UP_MAX_EDGE   = 1600;
 const UP_QUALITY    = 0.90;
 const UP_MAX_BYTES  = 12 * 1024 * 1024;    // 跟 Worker 那边的上限对齐
-const UP_TYPES      = ['image/png','image/jpeg','image/webp','image/gif'];
 
+// 认文件头，不认 file.type。
+//
+// file.type 是选择器报的 MIME，安卓上从 content:// 取出来的文件经常报空串或者
+// application/octet-stream —— 信它的话，APK 里选一张正常的图会被当成"不支持的
+// 格式"拒掉，而且只在 APK 里出问题，浏览器上永远复现不了。文件头是图片自己带的，
+// 谁也改不了。
+function upSniffType(bytes){
+  const at = (i, sig) => sig.every((c,k)=>bytes[i+k] === c);
+  if(at(0,[0x89,0x50,0x4E,0x47])) return 'image/png';
+  if(at(0,[0xFF,0xD8,0xFF]))      return 'image/jpeg';
+  if(at(0,[0x47,0x49,0x46,0x38])) return 'image/gif';
+  if(at(0,[0x52,0x49,0x46,0x46]) && at(8,[0x57,0x45,0x42,0x50])) return 'image/webp';
+  return null;   // 认不出来：可能是 iPhone 的 HEIC，交给下面去试着解码转换
+}
 // 动图绝对不能压：压缩要把图画到画布上再导出，而画布只拿得到一帧 ——
-// 压完动态表情就变成一张静止的图了。这里按文件头认，不看后缀，
-// 因为从相册出来的文件名经常是 IMG_1234 这种什么都看不出来的东西。
-async function upIsAnimated(file){
-  try{
-    const head = new Uint8Array(await file.slice(0, 262144).arrayBuffer());
-    return hasMultipleFrames(head);
-  }catch(e){ return false; }   // 认不出来就当静图走压缩，最坏是压一张本来就静的图
+// 压完动态表情就变成一张静止的图了。
+function upIsAnimated(bytes){
+  try{ return hasMultipleFrames(bytes); }
+  catch(e){ return false; }   // 认不出来就当静图走压缩，最坏是压一张本来就静的图
 }
 
 /**
  * 把一个文件变成「可以上传的东西」。
  * 返回 {blob, type, skipped} —— skipped 说明为什么没压，用来给用户一句交代。
+ * 认不出格式又解不开的，抛错，由调用方汇总进错误清单。
  */
 async function upPrepare(file){
-  const original = { blob:file, type:file.type, skipped:null };
+  const head = new Uint8Array(await file.slice(0, 262144).arrayBuffer());
+  const sniffed = upSniffType(head);
+  const original = { blob:file, type:sniffed, skipped:null };
 
-  if(await upIsAnimated(file)) return Object.assign(original, { skipped:'动图，保持原样' });
+  // 动图必须认得出格式才能原样传 —— 得有个扩展名
+  if(sniffed && upIsAnimated(head)) return Object.assign(original, { skipped:'动图，保持原样' });
 
   let bmp;
   try{
     // from-image：手机拍的照片经常带旋转信息，不认的话传上去是躺倒的
     bmp = await createImageBitmap(file, { imageOrientation:'from-image' });
   }catch(e){
+    // 解不开又认不出格式（HEIC 之类），到这儿就只能放弃了
+    if(!sniffed) throw new Error('这个格式不支持，可以先转成 png 或 jpg');
     return Object.assign(original, { skipped:'读不出尺寸，保持原样' });
   }
 
@@ -7369,8 +7385,10 @@ async function upPrepare(file){
   if(!out) return Object.assign(original, { skipped:'压缩失败，保持原样' });
 
   // 本来就小、本来就优化过的图，压完反而更大。那就别压了 ——
-  // 目的是省空间和流量，不是为了压而压
-  if(out.size >= file.size) return Object.assign(original, { skipped:'原图本来就更小' });
+  // 目的是省空间和流量，不是为了压而压。
+  // 但认不出原格式的（iPhone 相册里的 HEIC 就是这种）没有"保持原样"这个选项，
+  // 存进去也没有扩展名可给，只能用转出来的这张。
+  if(out.size >= file.size && sniffed) return Object.assign(original, { skipped:'原图本来就更小' });
 
   return { blob:out, type:out.type, skipped:null };
 }
@@ -7409,7 +7427,9 @@ function upPickFiles(multiple, onProgress){
     let picked = false;
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = UP_TYPES.join(',');
+    // 写 image/* 而不是精确列表：安卓部分选择器对列表支持得不好，会直接不过滤；
+    // 而且 HEIC 这类现在也收（能解开就转成 WebP），列表反而会把它挡在门外
+    input.accept = 'image/*';
     if(multiple) input.multiple = true;
     input.style.display = 'none';
     document.body.appendChild(input);
@@ -7426,7 +7446,6 @@ function upPickFiles(multiple, onProgress){
         const f = files[i];
         if(onProgress) onProgress(i, files.length, f.name);
         try{
-          if(!UP_TYPES.includes(f.type)) throw new Error('只收 png / jpg / webp / gif');
           const { blob, type, skipped } = await upPrepare(f);
           if(skipped) notes.push(`${f.name}：${skipped}`);
           urls.push(await upSend(blob, type));
