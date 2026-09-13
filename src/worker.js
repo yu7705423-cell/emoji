@@ -46,6 +46,50 @@ async function whoami(req, env) {
   }
 }
 
+/**
+ * 起一个没被占用的文件名。
+ *
+ * 形如 2026/09/k3x9q2mf7p1a.webp。
+ *
+ * 三条约束决定了它只能长这样：
+ *   一、必须唯一 —— 撞名就是把别人的图覆盖掉。
+ *   二、同一个地址的内容永远不能变 —— 图是按一年的强缓存发出去的，
+ *       地址一旦复用，缓存会一直发旧的那张，而且没法让它失效。
+ *   三、不能用中文或原文件名 —— 中文在 URL 里会变成 %E8%A1%A8%E6%83%85 那种
+ *       更难看的东西，原文件名还可能带上传者不想公开的信息。
+ *
+ * 所以做不到"看名字知道是什么图"，只能做到短和整齐。年月分目录纯粹是为了
+ * 人看着舒服、将来清理时好下手 —— R2 本身没有目录这回事。
+ *
+ * 随机段 12 位 36 进制约等于 62 位熵，百万张图撞一次的概率在千万分之一量级。
+ * 但撞上的后果是有人的图被悄悄覆盖，所以还是查一下再用 —— 一次 head 而已。
+ */
+// 36 进制的随机串。256 不是 36 的整数倍，直接取模的话开头几个字符会偏多，
+// 所以把 252 以上的字节丢掉重取 —— 252 正好是 36 的 7 倍，剩下的就是均匀的。
+// 这点偏差其实无伤大雅，但"随机"这种地方一旦将就，以后没人会回来复查。
+function randomId(n) {
+  const A = '0123456789abcdefghijklmnopqrstuvwxyz';
+  let out = '';
+  while (out.length < n) {
+    for (const b of crypto.getRandomValues(new Uint8Array(n))) {
+      if (b < 252 && out.length < n) out += A[b % 36];
+    }
+  }
+  return out;
+}
+
+async function freshKey(env, ext) {
+  const now = new Date();
+  const dir = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  for (let i = 0; i < 5; i++) {
+    const key = `${dir}/${randomId(12)}.${ext}`;
+    if (!(await env.IMG.head(key))) return key;
+  }
+  // 连撞五次实际上不会发生。真到了这一步，宁可用一个丑但绝不会撞的名字，
+  // 也不能返回失败让用户白传一次
+  return `${dir}/${crypto.randomUUID()}.${ext}`;
+}
+
 async function handleUpload(req, env) {
   const userId = await whoami(req, env);
   if (!userId) return json({ ok: false, error: '请先登录' }, 401);
@@ -63,9 +107,7 @@ async function handleUpload(req, env) {
   if (!buf.byteLength) return json({ ok: false, error: '没有收到图片' }, 400);
   if (buf.byteLength > MAX_BYTES) return json({ ok: false, error: '图片太大（上限 12 MB）' }, 413);
 
-  // 路径带上传的人：将来要查某张图是谁传的、或者要清掉某个人传的东西，
-  // 不用另外记一张表
-  const key = `${userId}/${crypto.randomUUID()}.${ext}`;
+  const key = await freshKey(env, ext);
   await env.IMG.put(key, buf, {
     httpMetadata: {
       contentType: type,
