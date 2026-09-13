@@ -252,6 +252,20 @@
   .af-hint{font-size:11px; color:var(--text-faint); text-align:center; margin-top:8px; line-height:1.6;}
 
   /* 管理员通知：正文要能读、链接要能点 */
+  /* 云备份的逐步指引 */
+  .cloud-step{border:1px solid var(--border-soft); border-radius:var(--radius-s); padding:14px; margin-top:14px;}
+  .cloud-step-title{display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:700; margin-bottom:8px;}
+  .cloud-num{width:20px; height:20px; border-radius:50%; background:var(--ink); color:var(--ink-contrast);
+    font-size:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+  /* 要用户照抄到 GitHub 页面上的值。手打一定会打错，所以每行配一个复制按钮 */
+  .cloud-copy{display:flex; align-items:center; gap:10px; background:var(--bg-elev);
+    border-radius:var(--radius-s); padding:10px 12px; margin-top:8px;}
+  .cloud-copy-main{min-width:0; flex:1;}
+  .cloud-copy-label{font-size:11px; color:var(--text-dim); margin-bottom:3px;}
+  .cloud-copy-val{font-size:13px; font-weight:600; word-break:break-all;}
+  .row-act-sm{border:1px solid var(--border); background:var(--bg); color:var(--text); border-radius:8px;
+    padding:6px 12px; font-size:12px; line-height:1; cursor:pointer; white-space:nowrap; flex-shrink:0;}
+  .row-act-sm:hover{background:var(--bg-hover);}
   .notif-icon{width:15px; height:15px; flex-shrink:0;}
   /* 心和喇叭跟着 emoji 一起换掉：emoji 每个系统长得都不一样，
      跟这一页的线性图标凑一起总是格格不入 */
@@ -4230,38 +4244,364 @@ function repoPublishPicked(){
 // 浏览器存储是会没的：清缓存、换手机、无痕模式都会丢，iOS Safari 更狠，
 // 放着几天不打开就可能被系统清掉。所以备份不是锦上添花，是必需品。
 // 备份包是个 zip：图片以原始二进制存在里面，不 base64，体积不虚胖。
+// 打包本身抽出来：本地导出和云备份用的是同一个包，不能各写一套 ——
+// 两边格式一旦走偏，云端存的东西就恢复不回来了。
+async function buildBackupZip(){
+  await ensureJSZip();
+  const zip = new JSZip();
+  const blobTypes = {};
+  const withBlob = repoItems.filter(it=>it.hasBlob);
+  for(const it of withBlob){
+    const blob = await repoGetBlob(it.id);
+    if(!blob) continue;
+    blobTypes[it.id] = blob.type || 'image/png';
+    zip.file(`blobs/${it.id}`, blob);
+  }
+  zip.file('items.json',   JSON.stringify(repoItems));
+  zip.file('folders.json', JSON.stringify(repoFolders));
+  zip.file('manifest.json', JSON.stringify({
+    app:'Yoww', kind:'repo-backup', version:1,
+    exportedAt: new Date().toISOString(),
+    itemCount: repoItems.length, folderCount: repoFolders.length,
+    blobTypes,
+  }, null, 2));
+  return zip.generateAsync({ type:'blob', compression:'DEFLATE', compressionOptions:{ level:6 } });
+}
+function backupStamp(){
+  const d = new Date();
+  return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+}
 async function repoExportBackup(){
   showToast('正在打包…');
-  try{ await ensureJSZip(); }catch(e){ showToast(e.message); return; }
   try{
-    const zip = new JSZip();
-    const blobTypes = {};
-    const withBlob = repoItems.filter(it=>it.hasBlob);
-    for(const it of withBlob){
-      const blob = await repoGetBlob(it.id);
-      if(!blob) continue;
-      blobTypes[it.id] = blob.type || 'image/png';
-      zip.file(`blobs/${it.id}`, blob);
-    }
-    zip.file('items.json',   JSON.stringify(repoItems));
-    zip.file('folders.json', JSON.stringify(repoFolders));
-    zip.file('manifest.json', JSON.stringify({
-      app:'Yoww', kind:'repo-backup', version:1,
-      exportedAt: new Date().toISOString(),
-      itemCount: repoItems.length, folderCount: repoFolders.length,
-      blobTypes,
-    }, null, 2));
-    const out = await zip.generateAsync({ type:'blob', compression:'DEFLATE', compressionOptions:{ level:6 } });
-    const d = new Date();
-    const stamp = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
-    downloadBlob(out, `Yoww我的仓库备份_${stamp}.zip`);
+    const out = await buildBackupZip();
+    downloadBlob(out, `Yoww我的仓库备份_${backupStamp()}.zip`);
     showToast(`已导出 ${repoItems.length} 张`);
   }catch(e){
     showToast('导出失败：'+(e && e.message ? e.message : '未知错误'));
   }
 }
 
-// 导入是「合并」不是「覆盖」：同一条（按 来源+链接 判重）不会重复进来，
+/* ===================== 云备份（GitHub 私有仓库） =====================
+   为什么是 GitHub：不用自己付服务器钱、不用注册新账号（做这个站的人多半已经有）、
+   私有仓库外人看不到。代价是要手动配三样东西，所以设置那一步做成了逐条指引。
+
+   为什么要分块：GitHub 的 Contents 接口单文件上限在 100MB 左右，但真正的坎在更前面 ——
+   一次 PUT 几十兆很容易在手机网络上断掉，断了整包重传。切成 5MB 一块，
+   每块单独 base64、单独上传，断了只重传那一块。
+   每块是独立的一个文件，所以解码时互不依赖，不存在切在字段中间的问题。 */
+const CLOUD_DIR = 'yoww-backup';
+const CLOUD_CHUNK = 5 * 1024 * 1024;
+const CLOUD_KEY = 'cloud_cfg';
+
+async function cloudGetCfg(){
+  try{
+    const db = await openRepoDb();
+    return await new Promise((res, rej)=>{
+      const r = db.transaction('prefs','readonly').objectStore('prefs').get(CLOUD_KEY);
+      r.onsuccess = ()=>res(r.result ? r.result.cfg : null);
+      r.onerror = ()=>rej(r.error);
+    });
+  }catch(e){ return null; }
+}
+async function cloudSetCfg(cfg){
+  await repoTx(['prefs'],'readwrite', tx=>tx.objectStore('prefs').put({ id:CLOUD_KEY, cfg }));
+}
+async function cloudClearCfg(){
+  try{ await repoTx(['prefs'],'readwrite', tx=>tx.objectStore('prefs').delete(CLOUD_KEY)); }catch(e){}
+}
+
+// GitHub 的报错原文都是英文，而且 404 在这里几乎总是「仓库名写错了」而不是
+// 「没这个东西」—— 私有仓库对没权限的人一律回 404。直接翻译成人能懂的话。
+async function ghFetch(cfg, path, opts){
+  const o = Object.assign({ headers:{} }, opts || {});
+  o.headers = Object.assign({
+    'Authorization': 'Bearer ' + cfg.token,
+    'Accept': 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  }, o.headers);
+  let res;
+  try{
+    res = await fetch('https://api.github.com' + path, o);
+  }catch(e){
+    throw new Error('连不上 GitHub，检查一下网络');
+  }
+  if(res.status === 401) throw new Error('Token 不对或者已经过期，请重新生成一个');
+  if(res.status === 403){
+    const body = await res.text().catch(()=> '');
+    if(/rate limit/i.test(body)) throw new Error('请求太频繁，等几分钟再试');
+    throw new Error('Token 权限不够 —— 需要对这个仓库的「Contents」读写权限');
+  }
+  if(res.status === 404) throw new Error('找不到仓库，检查用户名和仓库名，或者 Token 没有勾到这个仓库');
+  if(res.status === 409) throw new Error('仓库是空的还没初始化，在 GitHub 上先建个 README 再试');
+  return res;
+}
+
+function bytesToB64(bytes){
+  let bin = '';
+  const CH = 0x8000;                       // 一次转太多会把调用栈撑爆
+  for(let i=0;i<bytes.length;i+=CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i+CH));
+  return btoa(bin);
+}
+async function sha256Hex(bytes){
+  const buf = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+// 覆盖已有文件必须带上它当前的 sha，不带 GitHub 会拒绝。文件不存在时返回 null。
+async function ghFileSha(cfg, path){
+  const res = await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${path}?ref=${encodeURIComponent(cfg.branch||'main')}`, {
+    headers:{ 'Authorization':'Bearer '+cfg.token, 'Accept':'application/vnd.github+json' },
+  }).catch(()=>null);
+  if(!res || !res.ok) return null;
+  const j = await res.json().catch(()=>null);
+  return j && j.sha ? j.sha : null;
+}
+async function ghPut(cfg, path, contentB64, message){
+  const sha = await ghFileSha(cfg, path);
+  const body = { message, content: contentB64, branch: cfg.branch || 'main' };
+  if(sha) body.sha = sha;
+  const res = await ghFetch(cfg, `/repos/${cfg.owner}/${cfg.repo}/contents/${path}`, {
+    method:'PUT', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body),
+  });
+  if(!res.ok){
+    const t = await res.text().catch(()=> '');
+    throw new Error('上传失败：' + (t.slice(0,120) || res.status));
+  }
+}
+
+async function cloudUpload(onProgress){
+  const cfg = await cloudGetCfg();
+  if(!cfg) throw new Error('还没有设置云备份');
+  const say = m => { if(onProgress) onProgress(m); };
+  say('正在打包…');
+  const zip = await buildBackupZip();
+  const bytes = new Uint8Array(await zip.arrayBuffer());
+  const total = Math.ceil(bytes.length / CLOUD_CHUNK) || 1;
+  const chunks = [];
+  for(let i=0;i<total;i++){
+    const part = bytes.subarray(i*CLOUD_CHUNK, (i+1)*CLOUD_CHUNK);
+    const name = `chunk-${String(i).padStart(3,'0')}.bin`;
+    say(`正在上传第 ${i+1} / ${total} 块…`);
+    await ghPut(cfg, `${CLOUD_DIR}/${name}`, bytesToB64(part), `Yoww 备份 ${name}`);
+    chunks.push({ name, bytes: part.length, sha256: await sha256Hex(part) });
+  }
+  // manifest 最后写：它一出现就代表「这份备份是完整的」。
+  // 先写它再传块的话，中途断网会留下一个指向半截数据的清单。
+  const manifest = {
+    app:'Yoww', kind:'repo-cloud-backup', version:1,
+    uploadedAt: new Date().toISOString(),
+    totalBytes: bytes.length, chunkSize: CLOUD_CHUNK,
+    itemCount: repoItems.length, chunks,
+  };
+  say('正在写入清单…');
+  await ghPut(cfg, `${CLOUD_DIR}/manifest.json`,
+    bytesToB64(new TextEncoder().encode(JSON.stringify(manifest, null, 2))), 'Yoww 备份清单');
+  await cloudSetCfg(Object.assign({}, cfg, { lastUpload: manifest.uploadedAt }));
+  return manifest;
+}
+
+// 读文件必须用 raw 媒体类型：Contents 接口对超过 1MB 的文件返回的 JSON 里
+// content 是空的 —— 不换媒体类型的话，大块拿回来会是一片空白，而且不报错。
+async function ghGetRawRes(cfg, path){
+  const res = await ghFetch(cfg, `/repos/${cfg.owner}/${cfg.repo}/contents/${path}?ref=${encodeURIComponent(cfg.branch||'main')}`,
+    { headers:{ 'Accept':'application/vnd.github.raw' } });
+  if(!res.ok) throw new Error('读取失败：' + path);
+  return res;
+}
+async function ghGetText(cfg, path){ return (await ghGetRawRes(cfg, path)).text(); }
+// 分块存的是 zip 的原始字节。PUT 时 content 字段要的是「文件字节的 base64」，
+// 所以 GitHub 上那个文件本身就是二进制 —— 取回来必须按字节读。
+// 用 res.text() 的话二进制会被当成 UTF-8 解析，字节直接被改写，zip 就废了。
+async function ghGetBytes(cfg, path){
+  return new Uint8Array(await (await ghGetRawRes(cfg, path)).arrayBuffer());
+}
+async function cloudRestore(onProgress){
+  const cfg = await cloudGetCfg();
+  if(!cfg) throw new Error('还没有设置云备份');
+  const say = m => { if(onProgress) onProgress(m); };
+  say('正在读取清单…');
+  let manifest;
+  try{
+    manifest = JSON.parse(await ghGetText(cfg, `${CLOUD_DIR}/manifest.json`));
+  }catch(e){
+    throw new Error('云端还没有备份，或者清单读不出来');
+  }
+  if(manifest.kind !== 'repo-cloud-backup') throw new Error('云端那份不是 Yoww 的备份');
+  const list = manifest.chunks || [];
+  const parts = [];
+  for(let i=0;i<list.length;i++){
+    say(`正在下载第 ${i+1} / ${list.length} 块…`);
+    const bytes = await ghGetBytes(cfg, `${CLOUD_DIR}/${list[i].name}`);
+    // 逐块校验。少一个字节整个 zip 就解不开，那时候再排查根本不知道是哪一块坏的
+    if(list[i].sha256 && await sha256Hex(bytes) !== list[i].sha256){
+      throw new Error(`第 ${i+1} 块数据校验不通过，云端那份可能传坏了，建议重新上传一次`);
+    }
+    parts.push(bytes);
+  }
+  const blob = new Blob(parts, { type:'application/zip' });
+  if(manifest.totalBytes && blob.size !== manifest.totalBytes){
+    throw new Error('拼出来的大小跟清单对不上，云端那份可能不完整');
+  }
+  say('正在导入…');
+  return blob;
+}
+
+/* ---- 云备份设置：一步一步来，每一步要填什么、去哪拿，都写死在界面上 ---- */
+const CLOUD_DEFAULT_REPO = 'yoww-backup';
+function copyText(t, okMsg){
+  navigator.clipboard.writeText(t).then(()=>showToast(okMsg||'已复制')).catch(()=>showToast('复制失败，长按手动复制'));
+}
+// 「要你照抄的一行」：左边是值，右边一个复制按钮。
+// 指引里凡是让用户去 GitHub 页面上填的东西，一律做成这个样子 ——
+// 让人照着屏幕手打，打错一个字符就是一次看不懂的报错。
+function copyRowHtml(label, value, id){
+  return `<div class="cloud-copy">
+    <div class="cloud-copy-main">
+      <div class="cloud-copy-label">${esc(label)}</div>
+      <div class="cloud-copy-val" id="${id}-v">${esc(value)}</div>
+    </div>
+    <button class="row-act-sm" data-copy-target="${id}-v">复制</button>
+  </div>`;
+}
+function bindCopyRows(root){
+  root.querySelectorAll('[data-copy-target]').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      const el = document.getElementById(b.dataset.copyTarget);
+      if(el) copyText(el.textContent, '已复制：'+el.textContent);
+    });
+  });
+}
+
+async function openCloudSetupSheet(){
+  const cfg = (await cloudGetCfg()) || {};
+  let repo = cfg.repo || CLOUD_DEFAULT_REPO;
+  $('repoSheetMask').classList.add('open');
+  draw();
+
+  function draw(){
+    $('repoSheetBox').innerHTML = `
+      <div class="sheet-head"><span class="t">设置云备份</span><button class="icon-btn" id="csClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+      <div class="sheet-scroll">
+        <p class="field-help" style="margin-top:0;">备份会存进你自己的 GitHub 私有仓库，只有你能看到。
+          没有 GitHub 账号的话先去 <b>github.com</b> 注册一个，两分钟。</p>
+
+        <div class="cloud-step">
+          <div class="cloud-step-title"><span class="cloud-num">1</span>新建一个私有仓库</div>
+          <p class="field-help" style="margin-top:0;">点下面的按钮会打开 GitHub 的新建仓库页面，仓库名已经帮你填好了。
+            <b>三件事要确认</b>：名字是下面这个、选中 <b>Private</b>、勾上 <b>Add a README file</b>。</p>
+          ${copyRowHtml('仓库名（Repository name）', repo, 'csRepoName')}
+          <p class="field-help">为什么要勾 README：完全空的仓库传不进东西，GitHub 会报错。有个 README 就不会。</p>
+          <div class="btn-row">
+            <button class="btn-outline" id="csOpenNew">去 GitHub 新建仓库</button>
+          </div>
+          <div class="field-label">如果你想用别的名字，改这里</div>
+          <input class="field-input" id="csRepo" value="${esc(repo)}" placeholder="${CLOUD_DEFAULT_REPO}">
+        </div>
+
+        <div class="cloud-step">
+          <div class="cloud-step-title"><span class="cloud-num">2</span>创建一个 Token</div>
+          <p class="field-help" style="margin-top:0;">Token 相当于给这个网页开一把只能开你那个备份仓库的钥匙。
+            点按钮打开创建页面，按下面四行照着填 —— 每行都有复制按钮，别手打。</p>
+          ${copyRowHtml('① Token name 填', 'Yoww 备份', 'csTokName')}
+          <p class="field-help">② <b>Expiration</b>（有效期）：选 <b>No expiration</b>。选了期限的话，到期后备份会突然开始报错。</p>
+          <p class="field-help">③ <b>Repository access</b>：选 <b>Only select repositories</b>，然后在下拉里选中你刚建的那个仓库。<b>别选 All repositories</b> —— 那等于把所有仓库的钥匙都给出去了。</p>
+          ${copyRowHtml('④ Permissions 里找这一项，设为 Read and write', 'Contents', 'csPerm')}
+          <p class="field-help">权限列表很长，用浏览器的页面内搜索找 <b>Contents</b> 最快。只需要这一项，别的都不用动。</p>
+          <div class="btn-row">
+            <button class="btn-outline" id="csOpenToken">去 GitHub 创建 Token</button>
+          </div>
+        </div>
+
+        <div class="cloud-step">
+          <div class="cloud-step-title"><span class="cloud-num">3</span>把 Token 粘进来</div>
+          <p class="field-help" style="margin-top:0;">生成后 GitHub 只会显示一次，<b>关掉页面就再也看不到了</b>，所以生成完马上复制粘过来。
+            以 <b>github_pat_</b> 开头。</p>
+          <input class="field-input" id="csToken" type="password" autocomplete="off"
+                 placeholder="${cfg.token ? '已保存，留空表示不改' : 'github_pat_...'}">
+          <p class="field-help">Token 只存在这台设备的浏览器里，不会上传到任何地方。用户名我会自动读出来，不用你填。</p>
+        </div>
+
+        <p class="hint" id="csMsg" style="display:none; margin-top:12px;"></p>
+        ${cfg.token ? `<div class="btn-row" style="margin-top:16px;"><button class="btn-outline" id="csForget">删除本机保存的 Token</button></div>` : ''}
+        <div style="height:8px;"></div>
+      </div>
+      <div class="sheet-footer"><button class="btn-solid" id="csSave">测试连接并保存</button></div>`;
+
+    bindCopyRows($('repoSheetBox'));
+    const msg = (text, bad)=>{ const e=$('csMsg'); e.textContent=text; e.style.color = bad ? '#C0392B' : 'var(--text-dim)'; e.style.display='block'; };
+    $('csClose').addEventListener('click', ()=>$('repoSheetMask').classList.remove('open'));
+    $('csRepo').addEventListener('input', e=>{
+      repo = e.target.value.trim() || CLOUD_DEFAULT_REPO;
+      $('csRepoName-v').textContent = repo;
+    });
+    $('csOpenNew').addEventListener('click', ()=>{
+      // name 参数 GitHub 认，能省掉用户自己打仓库名这一步
+      window.open('https://github.com/new?name=' + encodeURIComponent($('csRepo').value.trim() || CLOUD_DEFAULT_REPO), '_blank', 'noopener');
+    });
+    $('csOpenToken').addEventListener('click', ()=>{
+      window.open('https://github.com/settings/personal-access-tokens/new', '_blank', 'noopener');
+    });
+    const forget = $('csForget');
+    if(forget) forget.addEventListener('click', ()=>{
+      openConfirmSheet('删除 Token？', '删除后这台设备不能再自动备份，云端已经存的备份不受影响。', '删除', async ()=>{
+        await cloudClearCfg();
+        $('repoSheetMask').classList.remove('open');
+        showToast('已删除');
+      });
+    });
+
+    $('csSave').addEventListener('click', async ()=>{
+      const token = $('csToken').value.trim() || cfg.token || '';
+      const repoName = $('csRepo').value.trim() || CLOUD_DEFAULT_REPO;
+      if(!token) return msg('还没有填 Token', true);
+      const btn = $('csSave'); btn.disabled = true; btn.textContent = '测试中…';
+      try{
+        // 先问「你是谁」，用户名从这里来，不用用户自己填也就不会填错
+        const meRes = await ghFetch({ token }, '/user', {});
+        if(!meRes.ok) throw new Error('Token 用不了，请重新生成一个');
+        const me = await meRes.json();
+        const owner = me.login;
+        const probe = { token, owner, repo: repoName };
+        const rRes = await ghFetch(probe, `/repos/${owner}/${encodeURIComponent(repoName)}`, {});
+        if(!rRes.ok) throw new Error('找不到这个仓库，检查名字有没有打错');
+        const info = await rRes.json();
+        if(!info.private){
+          throw new Error('这个仓库是公开的！任何人都能看到你的备份。请到仓库 Settings 里改成 Private 再试');
+        }
+        await cloudSetCfg({ token, owner, repo: repoName, branch: info.default_branch || 'main', lastUpload: cfg.lastUpload || '' });
+        $('repoSheetMask').classList.remove('open');
+        showToast(`已连上 ${owner}/${repoName}`);
+        openRepoSettingsSheet();
+      }catch(e){
+        msg(e.message || '测试失败', true);
+      }finally{
+        btn.disabled = false; btn.textContent = '测试连接并保存';
+      }
+    });
+  }
+}
+
+async function cloudRunUpload(){
+  const box = $('repoSheetBox');
+  const set = m => { const e = document.getElementById('csProgress'); if(e) e.textContent = m; else showToast(m); };
+  try{
+    await cloudUpload(set);
+    showToast('已备份到云端');
+    openRepoSettingsSheet();
+  }catch(e){ showToast(e.message || '备份失败'); openRepoSettingsSheet(); }
+}
+async function cloudRunRestore(){
+  openConfirmSheet('从云端恢复？', '会把云端那份合并进来。同一张图片不会重复导入，本机现有的内容不会被覆盖或删除。', '恢复', async ()=>{
+    const set = m => showToast(m);
+    try{
+      const blob = await cloudRestore(set);
+      $('repoSheetMask').classList.remove('open');
+      await repoImportBackup(blob);
+    }catch(e){ showToast(e.message || '恢复失败'); }
+  });
+}
+
 // 但已经在仓库里的东西一条都不会被删。换手机导回来、两台设备各存了一些，
 // 都是合并才对；覆盖的话一不小心就把这边攒的全冲没了。
 async function repoImportBackup(file){
@@ -4350,12 +4690,36 @@ function openRepoSettingsSheet(){
         </div>
         <input type="file" id="rsFile" accept=".zip">
         <p class="field-help">导入为<b>合并</b>方式：同一张图片不会重复导入，仓库中的现有内容也不会被覆盖或删除。</p>
+
+        <div class="field-label">云备份</div>
+        <p class="field-help" id="cloudState">检查中…</p>
+        <div class="btn-row" id="cloudBtns"></div>
+        <p class="hint" id="csProgress" style="margin-top:8px;"></p>
         <div style="height:16px;"></div>
       </div>`;
     $('rsClose').addEventListener('click', ()=>$('repoSheetMask').classList.remove('open'));
     $('rsCacheRow').addEventListener('click', ()=>{ setRepoCacheImages(!repoCacheImages()); draw(); });
     $('rsExport').addEventListener('click', repoExportBackup);
     $('rsImport').addEventListener('click', ()=>$('rsFile').click());
+    // 配没配过云备份，两种情况给的按钮不一样
+    cloudGetCfg().then(cfg=>{
+      const st = $('cloudState'), btns = $('cloudBtns');
+      if(!st || !btns) return;
+      if(!cfg || !cfg.token){
+        st.innerHTML = '把备份存到你自己的 GitHub 私有仓库，换手机时直接拉回来。<b>需要先设置一次</b>，全程有逐步指引。';
+        btns.innerHTML = '<button class="btn-outline" id="cloudSetup">设置云备份</button>';
+        $('cloudSetup').addEventListener('click', openCloudSetupSheet);
+      } else {
+        const last = cfg.lastUpload ? `上次备份：${timeAgo(cfg.lastUpload)}` : '还没有备份过';
+        st.innerHTML = `已连接 <b>${esc(cfg.owner)}/${esc(cfg.repo)}</b>　·　${esc(last)}`;
+        btns.innerHTML = '<button class="btn-outline" id="cloudUp">立即备份</button>'
+          + '<button class="btn-outline" id="cloudDown">从云端恢复</button>';
+        btns.insertAdjacentHTML('afterend', '<div class="btn-row"><button class="btn-outline" id="cloudCfg">修改设置</button></div>');
+        $('cloudUp').addEventListener('click', cloudRunUpload);
+        $('cloudDown').addEventListener('click', cloudRunRestore);
+        $('cloudCfg').addEventListener('click', openCloudSetupSheet);
+      }
+    });
     $('rsFile').addEventListener('change', async e=>{
       const f = e.target.files && e.target.files[0];
       e.target.value = '';
