@@ -1327,6 +1327,11 @@ async function initAuth(){
     handleDeepLink();
     $('loadingOverlay').style.display = 'none';
     warmHeavyScripts();
+    // 自动备份排在最后，而且要等到浏览器空下来才动 —— 它会打包整个仓库、
+    // 传几兆上去，抢在开屏前面跑的话，用户看到的就是一个卡住的首页
+    const later = () => { cloudAutoMaybeRun().catch(e=>console.warn('自动备份出错：', e)); };
+    if(window.requestIdleCallback) requestIdleCallback(later, { timeout: 8000 });
+    else setTimeout(later, 3000);
   }catch(err){
     $('loadingOverlay').innerHTML = `<p class="hint" style="text-align:center; padding:0 24px;">连接失败：${esc(err.message||String(err))}<br>请检查网络后刷新重试。</p>`;
   }
@@ -4644,6 +4649,87 @@ async function cloudRestore(onProgress){
   return blob;
 }
 
+
+/* ---- 自动备份 ----
+   得先说清楚这个「自动」是什么：仓库数据在浏览器里（IndexedDB），服务器碰不到它，
+   所以做不出真正的定时任务。这里做的是「打开 app 时看一眼该不该备份了，该了就跑一次」。
+   人长期不开 app，就不会有备份 —— 这是这个架构决定的，绕不过去。 */
+const AUTO_CHOICES = [
+  { days: 0,  label: '关闭' },
+  { days: 1,  label: '每天' },
+  { days: 3,  label: '每 3 天' },
+  { days: 7,  label: '每周' },
+  { days: 15, label: '每 15 天' },
+  { days: 30, label: '每月' },
+];
+
+// 把一串值拼成一个不会歧义的字符串。每段前面写上自己的长度，
+// 就不需要挑一个"数据里绝不会出现"的分隔符 —— 那种字符并不存在。
+function fpJoin(parts){
+  return parts.map(v => { const s = String(v == null ? '' : v); return s.length + ':' + s; }).join('');
+}
+
+/**
+ * 仓库内容的指纹，用来判断「跟上次比有没有变」。
+ *
+ * 不能拿打包出来的 zip 去算：zip 里写了打包时间，同样的内容每次生成的字节都不一样，
+ * 那样每次都会认为"变了"，自动备份就退化成每次都全量重传。
+ *
+ * 所以对内容本身算。字段是一个个列出来的，不是把整个对象 JSON.stringify ——
+ * 那样将来谁给条目加一个无关紧要的字段（比如最后查看时间），指纹就会天天变。
+ */
+async function repoFingerprint(){
+  const items = repoItems.map(it => fpJoin([
+    it.id, it.source, it.url, it.desc, it.folder, it.pack, it.origin,
+    it.hasBlob ? 1 : 0,          // 图片本体是后来才缓存的话这一位会翻，算作变化
+    it.fromTitle, it.fromAuthor, it.fromCategory,
+    asArray(it.fromTags).join(','),
+  ])).sort();
+  const folders = repoFolders.map(f => fpJoin([f.id, f.name, f.parent || ''])).sort();
+  return sha256Hex(new TextEncoder().encode(fpJoin(items) + fpJoin(folders)));
+}
+
+/**
+ * 到点了就备份。开屏时调一次。
+ * 任何一步出问题都只是记下来，绝不能打断用户正常使用 —— 备份是后台的事。
+ */
+async function cloudAutoMaybeRun(){
+  let cfg;
+  try{ cfg = await cloudGetCfg(); }catch(e){ return; }
+  if(!cfg || !cfg.token || !cfg.autoDays) return;
+  if(!repoReady || !repoItems.length) return;      // 空仓库没什么可备份的
+
+  const due = cfg.autoDays * 86400000;
+  const last = Date.parse(cfg.autoCheckedAt || cfg.lastUpload || '') || 0;
+  if(Date.now() - last < due) return;
+
+  // 先比指纹。没变就只记一下时间，一个字节都不传 —— 大部分周期里仓库其实没动过，
+  // 全量重传纯属浪费流量，也会把备份仓库刷满一堆没有意义的提交
+  let fp = '';
+  try{ fp = await repoFingerprint(); }catch(e){ /* 算不出来就当变了，宁可多传一次 */ }
+  if(fp && fp === cfg.lastFingerprint){
+    await cloudSetCfg(Object.assign({}, cfg, { autoCheckedAt: new Date().toISOString(), autoError: '' }));
+    return;
+  }
+
+  showToast('正在自动备份…');
+  try{
+    await cloudUpload(()=>{});
+    // cloudUpload 自己写了 lastUpload，要在它写完的基础上改，不能拿旧的 cfg 盖回去
+    const after = (await cloudGetCfg()) || cfg;
+    await cloudSetCfg(Object.assign({}, after, {
+      autoCheckedAt: new Date().toISOString(), lastFingerprint: fp, autoError: '',
+    }));
+    showToast('自动备份完成');
+  }catch(e){
+    const err = (e && e.message) || '未知错误';
+    // 记下来，而且要说一声。备份最怕的失败是没声没响 ——
+    // 用户以为一直在备份，真要恢复时才发现云端停在三个月前
+    await cloudSetCfg(Object.assign({}, cfg, { autoCheckedAt: new Date().toISOString(), autoError: err }));
+    showToast('自动备份失败：' + err);
+  }
+}
+
 /* ---- 云备份设置：一步一步来，每一步要填什么、去哪拿，都写死在界面上 ---- */
 const CLOUD_DEFAULT_REPO = 'yoww-backup';
 function copyText(t, okMsg){
@@ -4784,6 +4870,14 @@ async function cloudRunUpload(){
   const set = m => { const e = document.getElementById('csProgress'); if(e) e.textContent = m; else showToast(m); };
   try{
     await cloudUpload(set);
+    // 手动备份完也要记指纹，不然下次自动检查会以为内容变过，白白再传一遍
+    try{
+      const fp = await repoFingerprint();
+      const now = await cloudGetCfg();
+      if(now) await cloudSetCfg(Object.assign({}, now, {
+        lastFingerprint: fp, autoCheckedAt: new Date().toISOString(), autoError: '',
+      }));
+    }catch(e){ /* 记不上不影响这次备份本身 */ }
     showToast('已备份到云端');
     openRepoSettingsSheet();
   }catch(e){ showToast(e.message || '备份失败'); openRepoSettingsSheet(); }
@@ -4908,13 +5002,36 @@ function openRepoSettingsSheet(){
         $('cloudSetup').addEventListener('click', openCloudSetupSheet);
       } else {
         const last = cfg.lastUpload ? `上次备份：${timeAgo(cfg.lastUpload)}` : '还没有备份过';
-        st.innerHTML = `已连接 <b>${esc(cfg.owner)}/${esc(cfg.repo)}</b>　·　${esc(last)}`;
+        st.innerHTML = `已连接 <b>${esc(cfg.owner)}/${esc(cfg.repo)}</b>　·　${esc(last)}`
+          // 上次自动备份失败过就要显眼地说出来。备份最糟的失败是悄无声息的那种：
+          // 人以为一直在备，真要恢复时才发现云端停在几个月前
+          + (cfg.autoError ? `<br><span style="color:#c0392b;">上次自动备份失败：${esc(cfg.autoError)}</span>` : '');
         btns.innerHTML = '<button class="btn-outline" id="cloudUp">立即备份</button>'
           + '<button class="btn-outline" id="cloudDown">从云端恢复</button>';
-        btns.insertAdjacentHTML('afterend', '<div class="btn-row"><button class="btn-outline" id="cloudCfg">修改设置</button></div>');
+        btns.insertAdjacentHTML('afterend', `
+          <div class="field-label">自动备份</div>
+          <select class="field-input" id="cloudAuto">
+            ${AUTO_CHOICES.map(c=>`<option value="${c.days}"${(cfg.autoDays||0)===c.days?' selected':''}>${c.label}</option>`).join('')}
+          </select>
+          <p class="field-help">仓库数据只在这台设备上，所以没法真的定时 ——
+            实际是<b>每次打开 Yoww 时看一眼到期没有</b>，到了就在后台传一次。长期不打开就不会备份。<br>
+            内容和上次一样时会跳过，不重复上传。</p>
+          <div class="btn-row"><button class="btn-outline" id="cloudCfg">修改设置</button></div>`);
         $('cloudUp').addEventListener('click', cloudRunUpload);
         $('cloudDown').addEventListener('click', cloudRunRestore);
         $('cloudCfg').addEventListener('click', openCloudSetupSheet);
+        $('cloudAuto').addEventListener('change', async e=>{
+          const days = Number(e.target.value) || 0;
+          const now = (await cloudGetCfg()) || cfg;
+          // 刚打开自动备份时，把计时从现在算起 —— 不然上次手动备份要是很久以前，
+          // 一选完就立刻传一次，用户会以为点错了什么
+          await cloudSetCfg(Object.assign({}, now, {
+            autoDays: days,
+            autoCheckedAt: days ? new Date().toISOString() : '',
+            autoError: '',
+          }));
+          showToast(days ? `已设为${AUTO_CHOICES.find(c=>c.days===days).label}自动备份` : '已关闭自动备份');
+        });
       }
     });
     $('rsFile').addEventListener('change', async e=>{
