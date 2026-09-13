@@ -4399,11 +4399,34 @@ async function cloudUpload(onProgress){
     bytesToB64(new TextEncoder().encode(JSON.stringify(manifest, null, 2))), 'Yoww 备份清单');
   // 把「怎么自己拼回去」和拼合工具一起放进备份文件夹。
   // 备份的意义是网站没了也能拿回东西 —— 那说明书和工具就不能只放在网站上。
+  // 这次比上次少用了几块的话，多出来的旧分片会一直留在云端。
+  // 清单不认它们，恢复不受影响，但它们会白占空间；而且手动恢复的人
+  // 把文件夹整个下下来，会看到一个对不上号的文件，平白生疑。
+  say('正在清理旧分片…');
+  try{ await cloudDropStaleChunks(cfg, total); }
+  catch(e){ console.warn('旧分片清理失败（不影响备份本身）：', e && e.message); }
   say('正在写入说明…');
   try{ await cloudPutHelpers(cfg, manifest); }
   catch(e){ console.warn('说明文件写入失败（不影响备份本身）：', e && e.message); }
   await cloudSetCfg(Object.assign({}, cfg, { lastUpload: manifest.uploadedAt }));
   return manifest;
+}
+// 删掉序号大于等于 keep 的旧分片。删不掉不算备份失败 —— 数据已经传完了，
+// 留几个用不到的文件不影响恢复。
+async function cloudDropStaleChunks(cfg, keep){
+  const res = await ghFetch(cfg, `/repos/${cfg.owner}/${cfg.repo}/contents/${CLOUD_DIR}?ref=${encodeURIComponent(cfg.branch||'main')}`, {});
+  if(!res.ok) return;
+  const list = await res.json();
+  if(!Array.isArray(list)) return;
+  for(const f of list){
+    const m = /^chunk-(\d+)\.bin$/.exec(f.name || '');
+    if(!m || Number(m[1]) < keep) continue;
+    await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${CLOUD_DIR}/${f.name}`, {
+      method:'DELETE',
+      headers:{ 'Authorization':'Bearer '+cfg.token, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json' },
+      body: JSON.stringify({ message:`Yoww 清理旧分片 ${f.name}`, sha:f.sha, branch: cfg.branch || 'main' }),
+    }).catch(()=>{});
+  }
 }
 // 说明书 + 拼合工具。写失败不算备份失败：数据本身已经传完了。
 async function cloudPutHelpers(cfg, manifest){
