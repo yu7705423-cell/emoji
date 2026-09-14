@@ -6875,13 +6875,231 @@ function openAvatarFrameTry(url, title){
 $('afTryBackBtn').addEventListener('click', ()=>$('afTryOverlay').classList.remove('open'));
 
 /* ===================== 「其他」：发布 / 编辑 ===================== */
+/* ---- 铃声 / 头像框：一次发好几条 ----
+   这两类的共同点是「一条就是一个标题加一个地址」，正文、授权说明都不填。
+   一条一条走完整的编辑器，发十个铃声就要把标签和权限重复选十遍。
+   所以给它们做成列表：上面一行一条，下面标签和权限填一次，对这一批都生效。
+
+   教程和指路不走这里 —— 那两类正文本身就是内容，凑不成列表。 */
+const BATCH_KINDS = { ringtone: '铃声', avatar_frame: '头像框' };
+let batchPost = null;
+
+function openPostBatch(kind){
+  batchPost = {
+    kind,
+    rows: [{ id: uid(), title: '', url: '' }],
+    pasteOpen: false, pasteText: '',
+    tags: [], tagInput: '',
+    allowRepost: false, allowEdit: false, otherChecked: false, otherText: '',
+  };
+  $('postEditorOverlay').classList.add('open');
+  drawPostBatch();
+}
+
+// 画之前先把输入框里的值收回到状态里。每敲一个字就重画的话，
+// 中文输入法打到一半会被打断
+function syncPostBatch(){
+  const st = batchPost; if(!st) return;
+  st.rows.forEach(r=>{
+    const t = document.querySelector(`[data-bp-title="${r.id}"]`);
+    const u = document.querySelector(`[data-bp-url="${r.id}"]`);
+    if(t) r.title = t.value;
+    if(u) r.url = u.value;
+  });
+  const ti = $('bpTagInput'); if(ti) st.tagInput = ti.value;
+  const ot = $('bpOther');    if(ot) st.otherText = ot.value;
+  const pt = $('bpPaste');    if(pt) st.pasteText = pt.value;
+}
+
+function drawPostBatch(){
+  const st = batchPost; if(!st) return;
+  const isFrame = st.kind === 'avatar_frame';
+  const suggestions = getAllKnownTags().filter(t=>!st.tags.includes(t)).slice(0, 20);
+
+  $('postEditorTitle').textContent = `发布${BATCH_KINDS[st.kind]}`;
+  $('postEditorBody').innerHTML = `
+    <p class="hint" style="margin-top:0;">可以一次发好几条。下面的标签和使用权限对这一批<b>全部生效</b>，不用一条条填。</p>
+
+    <div class="row-list" id="bpRows">
+      ${st.rows.map((r, i)=>`
+        <div class="row-item">
+          <div class="row-main">
+            <input class="desc" data-bp-title="${r.id}" placeholder="第 ${i+1} 条的名字" value="${esc(r.title)}" maxlength="60">
+            <input class="url" data-bp-url="${r.id}"
+              placeholder="${isFrame ? 'https://…  头像框图片链接' : 'https://…  mp3 / m4a 等直链'}" value="${esc(r.url)}">
+            ${r.url.trim() && isFrame ? `<img src="${esc(r.url.trim())}" alt="" referrerpolicy="no-referrer"
+              style="width:52px; height:52px; object-fit:contain; margin-top:6px; background:var(--bg-elev); border-radius:var(--radius-s);">` : ''}
+          </div>
+          <button class="row-act-sm" data-bp-del="${r.id}">删除</button>
+        </div>`).join('')}
+    </div>
+
+    <div class="btn-row">
+      ${isFrame ? '<button type="button" class="btn-outline" id="bpPick">从相册选图</button>' : ''}
+      <button type="button" class="btn-outline" id="bpAdd">＋ 添加一条</button>
+      <button type="button" class="btn-outline" id="bpPasteBtn">批量粘贴</button>
+    </div>
+    <div class="panel${st.pasteOpen ? ' open' : ''}" id="bpPastePanel">
+      <div class="composer">
+        <textarea class="field" id="bpPaste" placeholder="一行一条，名字和链接写在同一行：&#10;夏日漱石：https://example.com/a.mp3&#10;起风了 https://example.com/b.mp3">${esc(st.pasteText)}</textarea>
+      </div>
+      <p class="field-help">名字和链接之间用冒号、空格、破折号隔开都行。只贴链接不写名字也可以，导进来之后再补。</p>
+      <div class="btn-row"><button type="button" class="btn-solid" id="bpPasteAdd">导入到上面</button></div>
+    </div>
+    ${isFrame
+      ? '<p class="field-help">选图会自动压缩并转成链接，可以一次选多张，每张自动占一行，名字再补上就行。透明底的 PNG 效果最好。</p>'
+      : '<p class="field-help">贴直链，不要贴网盘或播放页地址，否则试听放不出来。</p>'}
+
+    <div class="field-label">标签（可选，最多 ${TAG_MAX} 个）</div>
+    <div class="tag-input-row" id="bpTagRow">
+      ${st.tags.map(t=>`<span class="tag-chip-edit">${esc(t)}<button type="button" class="tag-del-btn" data-tag="${esc(t)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></span>`).join('')}
+      <input id="bpTagInput" placeholder="${st.tags.length?'继续添加…':'输入标签后按回车'}" value="${esc(st.tagInput)}">
+    </div>
+    ${suggestions.length ? `<div class="chip-row" id="bpTagSuggest" style="margin-top:8px;">${suggestions.map(t=>`<button type="button" class="chip" data-tag="${esc(t)}">${esc(t)}</button>`).join('')}</div>` : ''}
+
+    <div class="field-label">使用权限</div>
+    <div class="perm-list">
+      <div class="perm-row" id="bpRepost"><div class="sel-check-inline ${st.allowRepost?'on':''}">${st.allowRepost?CHECK_SVG:''}</div><span class="perm-label">允许二传</span></div>
+      <div class="perm-row" id="bpEdit"><div class="sel-check-inline ${st.allowEdit?'on':''}">${st.allowEdit?CHECK_SVG:''}</div><span class="perm-label">允许二改</span></div>
+      <div class="perm-row" id="bpOtherRow"><div class="sel-check-inline ${st.otherChecked?'on':''}">${st.otherChecked?CHECK_SVG:''}</div><span class="perm-label">其他</span></div>
+    </div>
+    ${st.otherChecked ? `<input class="field-input" id="bpOther" placeholder="填写具体说明，例如：转载请注明出处" style="margin-top:8px;" value="${esc(st.otherText)}">` : ''}
+
+    <div class="btn-row" style="margin-top:18px;"><button class="btn-solid" id="bpSubmit">确认发布</button></div>
+    <div style="height:24px;"></div>`;
+
+  $('bpAdd').addEventListener('click', ()=>{
+    syncPostBatch();
+    st.rows.push({ id: uid(), title: '', url: '' });
+    drawPostBatch();
+  });
+
+  $('bpPasteBtn').addEventListener('click', ()=>{
+    syncPostBatch(); st.pasteOpen = !st.pasteOpen; drawPostBatch();
+    if(st.pasteOpen){ const el = $('bpPaste'); if(el) el.focus(); }
+  });
+  $('bpPasteAdd').addEventListener('click', ()=>{
+    syncPostBatch();
+    // 用表情包那边同一个解析器：它已经会从「名字：链接」里拆出两段，
+    // 也会把只写了 www. 没写协议的补全。两处各写一套迟早会不一致
+    const parsed = splitPastedLines(st.pasteText).map(parseLine).filter(Boolean);
+    const good = parsed.filter(x=>!x.error && x.url);
+    if(!good.length){ showToast('没认出任何一条，看看每行里有没有链接'); return; }
+    // 末尾那条完全空着的先用掉（刚进来默认就有一条），别在中间留个空行
+    const tail = st.rows[st.rows.length-1];
+    if(tail && !tail.title.trim() && !tail.url.trim()) st.rows.pop();
+    good.forEach(x=>st.rows.push({ id: uid(), title: x.desc || '', url: x.url }));
+    st.pasteText = ''; st.pasteOpen = false;
+    drawPostBatch();
+    const bad = parsed.length - good.length;
+    showToast(bad ? `导入 ${good.length} 条，${bad} 行没有链接被跳过` : `已导入 ${good.length} 条`);
+  });
+  $('postEditorBody').querySelectorAll('[data-bp-del]').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      syncPostBatch();
+      st.rows = st.rows.filter(r=>r.id !== b.dataset.bpDel);
+      if(!st.rows.length) st.rows.push({ id: uid(), title: '', url: '' });   // 一行都没有的界面没法用
+      drawPostBatch();
+    });
+  });
+  // 贴完头像框链接就立刻出一张小图，贴错了当场看得出来
+  if(isFrame){
+    $('postEditorBody').querySelectorAll('[data-bp-url]').forEach(inp=>{
+      inp.addEventListener('change', ()=>{ syncPostBatch(); drawPostBatch(); });
+    });
+  }
+
+  const pick = $('bpPick');
+  if(pick) pick.addEventListener('click', async ()=>{
+    syncPostBatch();
+    const { urls } = await upWithButton(pick, true);
+    if(!urls.length) return;
+    // 末尾那条要是完全空着（刚进来默认就有一条），先用掉它，别在中间留个空行
+    const tail = st.rows[st.rows.length-1];
+    if(tail && !tail.title.trim() && !tail.url.trim()) st.rows.pop();
+    urls.forEach(u=>st.rows.push({ id: uid(), title: '', url: u }));
+    drawPostBatch();
+  });
+
+  // 标签这一段跟单条编辑器里那套是一样的，写法也照着来
+  const addTag = raw => {
+    const v = String(raw == null ? '' : raw).trim().slice(0, 20);
+    if(!v || st.tags.includes(v)) return;
+    if(st.tags.length >= TAG_MAX){ showToast(`最多添加 ${TAG_MAX} 个标签`); return; }
+    st.tags.push(v);
+  };
+  const tagInput = $('bpTagInput');
+  tagInput.addEventListener('input', e=>{ st.tagInput = e.target.value; });
+  tagInput.addEventListener('keydown', e=>{
+    if(e.key !== 'Enter') return;
+    e.preventDefault(); syncPostBatch(); addTag(st.tagInput); st.tagInput = ''; drawPostBatch();
+    const el = $('bpTagInput'); if(el) el.focus();
+  });
+  $('bpTagRow').querySelectorAll('.tag-del-btn').forEach(b=>{
+    b.addEventListener('click', ()=>{ syncPostBatch(); st.tags = st.tags.filter(t=>t !== b.dataset.tag); drawPostBatch(); });
+  });
+  const sug = $('bpTagSuggest');
+  if(sug) sug.querySelectorAll('button[data-tag]').forEach(b=>{
+    b.addEventListener('click', ()=>{ syncPostBatch(); addTag(b.dataset.tag); drawPostBatch(); });
+  });
+
+  $('bpRepost').addEventListener('click', ()=>{ syncPostBatch(); st.allowRepost = !st.allowRepost; drawPostBatch(); });
+  $('bpEdit').addEventListener('click',   ()=>{ syncPostBatch(); st.allowEdit   = !st.allowEdit;   drawPostBatch(); });
+  $('bpOtherRow').addEventListener('click', ()=>{
+    syncPostBatch(); st.otherChecked = !st.otherChecked;
+    if(!st.otherChecked) st.otherText = '';
+    drawPostBatch();
+  });
+  $('bpSubmit').addEventListener('click', submitPostBatch);
+}
+
+async function submitPostBatch(){
+  const st = batchPost; if(!st) return;
+  syncPostBatch();
+
+  // 完全空的行直接忽略：多点了一下「添加一条」不该变成报错
+  const rows = st.rows.filter(r=>r.title.trim() || r.url.trim());
+  if(!rows.length){ showToast('还没有填任何一条'); return; }
+  const bad = rows.findIndex(r=>!r.title.trim() || !r.url.trim());
+  if(bad >= 0){ showToast(`第 ${bad+1} 条的名字和链接都要填`); return; }
+
+  const perm = {
+    tags: st.tags.slice(),
+    allow_repost: st.allowRepost,
+    allow_edit: st.allowEdit,
+    other_permission: st.otherChecked ? st.otherText.trim() : '',
+  };
+  const payload = rows.map(r=>Object.assign({
+    kind: st.kind, title: r.title.trim(), url: r.url.trim(),
+    body: '', link: '', credit: '',
+    user_id: currentUserId, author_nickname: currentUser, author_avatar_url: avatarDataUrl || null,
+  }, perm));
+
+  const btn = $('bpSubmit');
+  btn.disabled = true; btn.textContent = '发布中…';
+  const { error } = await sb.from('posts').insert(payload);
+  btn.disabled = false; btn.textContent = '确认发布';
+  if(error){ showToast('发布失败：'+error.message); return; }
+
+  $('postEditorOverlay').classList.remove('open');
+  batchPost = null;
+  showToast(`已发布 ${payload.length} 条`);
+  await loadPosts(); renderAll(); showPage('my');
+}
+
 // 发布页那个「其他」面板里的四个入口
 function renderPostKindPick(){
   const wrap = $('pubPostKindPick'); if(!wrap) return;
   wrap.innerHTML = POST_KINDS.map(k=>
     `<button class="post-kind-btn" data-kind="${k.id}"><b>${esc(k.label)}</b><span>${esc(k.desc)}</span></button>`).join('');
   wrap.querySelectorAll('.post-kind-btn').forEach(b=>{
-    b.addEventListener('click', ()=>openPostEditor(b.dataset.kind, null));
+    b.addEventListener('click', ()=>{
+      const k = b.dataset.kind;
+      // 铃声和头像框一条就是「一个名字加一个地址」，做成列表能一次发好几条。
+      // 教程和指路的正文本身就是内容，列不成表，还走原来那个单条编辑器。
+      // 编辑已有的帖子也一律走单条编辑器 —— 批量那套改的是一批，不是某一条。
+      if(BATCH_KINDS[k]) openPostBatch(k); else openPostEditor(k, null);
+    });
   });
 }
 
@@ -7062,6 +7280,7 @@ function openPostEditor(kind, existing){
 $('postEditorBackBtn').addEventListener('click', ()=>{
   $('postEditorOverlay').classList.remove('open');
   editingPost = null;
+  batchPost = null;
 });
 
 /* ===================== fonts section ===================== */
