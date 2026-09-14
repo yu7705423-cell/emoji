@@ -760,7 +760,11 @@
 
       <div id="pubFontsPane" style="display:none; margin-top:16px;">
         <p class="hint" style="margin-top:0;">上传一个字体文件链接，配一段展示文案、挑选语言样例，做成一张可以分享的字体卡片。</p>
-        <div class="btn-row"><button class="btn-solid" id="pubCreateFontBtn">创建字体卡片</button></div>
+        <div class="btn-row">
+          <button class="btn-solid" id="pubCreateFontBtn">创建字体卡片</button>
+          <button class="btn-outline" id="pubBatchFontBtn">批量粘贴</button>
+        </div>
+        <p class="field-help">有一批字体要发的话走「批量粘贴」：一行一个「名字：链接」，一次全导进来，卡片样式之后再单独调。</p>
       </div>
 
       <div id="pubPostsPane" style="display:none; margin-top:16px;">
@@ -6881,7 +6885,19 @@ $('afTryBackBtn').addEventListener('click', ()=>$('afTryOverlay').classList.remo
    所以给它们做成列表：上面一行一条，下面标签和权限填一次，对这一批都生效。
 
    教程和指路不走这里 —— 那两类正文本身就是内容，凑不成列表。 */
-const BATCH_KINDS = { ringtone: '铃声', avatar_frame: '头像框' };
+// 三种类型共用同一个列表和同一个粘贴框，差别写在这张表里。
+// 不这样的话，字体这边就是第三份一模一样的解析和渲染代码。
+const BATCH_KINDS = {
+  ringtone:     { label:'铃声',   table:'posts', pick:false, perms:true,  cats:false,
+                  urlHint:'https://…  mp3 / m4a 等直链',
+                  help:'贴直链，不要贴网盘或播放页地址，否则试听放不出来。' },
+  avatar_frame: { label:'头像框', table:'posts', pick:true,  perms:true,  cats:false,
+                  urlHint:'https://…  头像框图片链接',
+                  help:'选图会自动压缩并转成链接，可以一次选多张，每张自动占一行，名字再补上就行。透明底的 PNG 效果最好。' },
+  font:         { label:'字体',   table:'fonts', pick:false, perms:false, cats:true,
+                  urlHint:'https://…  ttf / otf / woff2 直链',
+                  help:'先把名字和链接批量导进来，卡片的展示文案、语言样例、背景这些之后点进每个字体单独调。' },
+};
 let batchPost = null;
 
 function openPostBatch(kind){
@@ -6889,6 +6905,7 @@ function openPostBatch(kind){
     kind,
     rows: [{ id: uid(), title: '', url: '' }],
     pasteOpen: false, pasteText: '',
+    category: FONT_CATEGORIES[0],
     tags: [], tagInput: '',
     allowRepost: false, allowEdit: false, otherChecked: false, otherText: '',
   };
@@ -6913,12 +6930,13 @@ function syncPostBatch(){
 
 function drawPostBatch(){
   const st = batchPost; if(!st) return;
+  const cfg = BATCH_KINDS[st.kind];
   const isFrame = st.kind === 'avatar_frame';
   const suggestions = getAllKnownTags().filter(t=>!st.tags.includes(t)).slice(0, 20);
 
-  $('postEditorTitle').textContent = `发布${BATCH_KINDS[st.kind]}`;
+  $('postEditorTitle').textContent = `发布${cfg.label}`;
   $('postEditorBody').innerHTML = `
-    <p class="hint" style="margin-top:0;">可以一次发好几条。下面的标签和使用权限对这一批<b>全部生效</b>，不用一条条填。</p>
+    <p class="hint" style="margin-top:0;">可以一次发好几条${cfg.perms ? '，下面的标签和使用权限对这一批<b>全部生效</b>，不用一条条填' : ''}${cfg.cats ? '，下面的分类这一批<b>共用一个</b>' : ''}。</p>
 
     <div class="row-list" id="bpRows">
       ${st.rows.map((r, i)=>`
@@ -6926,7 +6944,7 @@ function drawPostBatch(){
           <div class="row-main">
             <input class="desc" data-bp-title="${r.id}" placeholder="第 ${i+1} 条的名字" value="${esc(r.title)}" maxlength="60">
             <input class="url" data-bp-url="${r.id}"
-              placeholder="${isFrame ? 'https://…  头像框图片链接' : 'https://…  mp3 / m4a 等直链'}" value="${esc(r.url)}">
+              placeholder="${esc(cfg.urlHint)}" value="${esc(r.url)}">
             ${r.url.trim() && isFrame ? `<img src="${esc(r.url.trim())}" alt="" referrerpolicy="no-referrer"
               style="width:52px; height:52px; object-fit:contain; margin-top:6px; background:var(--bg-elev); border-radius:var(--radius-s);">` : ''}
           </div>
@@ -6935,7 +6953,7 @@ function drawPostBatch(){
     </div>
 
     <div class="btn-row">
-      ${isFrame ? '<button type="button" class="btn-outline" id="bpPick">从相册选图</button>' : ''}
+      ${cfg.pick ? '<button type="button" class="btn-outline" id="bpPick">从相册选图</button>' : ''}
       <button type="button" class="btn-outline" id="bpAdd">＋ 添加一条</button>
       <button type="button" class="btn-outline" id="bpPasteBtn">批量粘贴</button>
     </div>
@@ -6946,10 +6964,15 @@ function drawPostBatch(){
       <p class="field-help">名字和链接之间用冒号、空格、破折号隔开都行。只贴链接不写名字也可以，导进来之后再补。</p>
       <div class="btn-row"><button type="button" class="btn-solid" id="bpPasteAdd">导入到上面</button></div>
     </div>
-    ${isFrame
-      ? '<p class="field-help">选图会自动压缩并转成链接，可以一次选多张，每张自动占一行，名字再补上就行。透明底的 PNG 效果最好。</p>'
-      : '<p class="field-help">贴直链，不要贴网盘或播放页地址，否则试听放不出来。</p>'}
+    <p class="field-help">${esc(cfg.help)}</p>
 
+    ${cfg.cats ? `
+    <div class="field-label">分类（这一批都用同一个）</div>
+    <div class="chip-row" id="bpCatRow">
+      ${FONT_CATEGORIES.map(c=>`<button type="button" class="chip${st.category===c?' active':''}" data-bp-cat="${esc(c)}">${esc(c)}</button>`).join('')}
+    </div>` : ''}
+
+    ${cfg.perms ? `
     <div class="field-label">标签（可选，最多 ${TAG_MAX} 个）</div>
     <div class="tag-input-row" id="bpTagRow">
       ${st.tags.map(t=>`<span class="tag-chip-edit">${esc(t)}<button type="button" class="tag-del-btn" data-tag="${esc(t)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></span>`).join('')}
@@ -6964,6 +6987,7 @@ function drawPostBatch(){
       <div class="perm-row" id="bpOtherRow"><div class="sel-check-inline ${st.otherChecked?'on':''}">${st.otherChecked?CHECK_SVG:''}</div><span class="perm-label">其他</span></div>
     </div>
     ${st.otherChecked ? `<input class="field-input" id="bpOther" placeholder="填写具体说明，例如：转载请注明出处" style="margin-top:8px;" value="${esc(st.otherText)}">` : ''}
+    ` : ''}
 
     <div class="btn-row" style="margin-top:18px;"><button class="btn-solid" id="bpSubmit">确认发布</button></div>
     <div style="height:24px;"></div>`;
@@ -7021,6 +7045,14 @@ function drawPostBatch(){
     drawPostBatch();
   });
 
+  const catRow = $('bpCatRow');
+  if(catRow) catRow.querySelectorAll('[data-bp-cat]').forEach(b=>{
+    b.addEventListener('click', ()=>{ syncPostBatch(); st.category = b.dataset.bpCat; drawPostBatch(); });
+  });
+
+  // 字体没有标签和权限那两段，下面这些元素根本不存在，得整块跳过
+  if(!cfg.perms){ $('bpSubmit').addEventListener('click', submitPostBatch); return; }
+
   // 标签这一段跟单条编辑器里那套是一样的，写法也照着来
   const addTag = raw => {
     const v = String(raw == null ? '' : raw).trim().slice(0, 20);
@@ -7063,28 +7095,40 @@ async function submitPostBatch(){
   const bad = rows.findIndex(r=>!r.title.trim() || !r.url.trim());
   if(bad >= 0){ showToast(`第 ${bad+1} 条的名字和链接都要填`); return; }
 
-  const perm = {
-    tags: st.tags.slice(),
-    allow_repost: st.allowRepost,
-    allow_edit: st.allowEdit,
-    other_permission: st.otherChecked ? st.otherText.trim() : '',
-  };
-  const payload = rows.map(r=>Object.assign({
-    kind: st.kind, title: r.title.trim(), url: r.url.trim(),
-    body: '', link: '', credit: '',
-    user_id: currentUserId, author_nickname: currentUser, author_avatar_url: avatarDataUrl || null,
-  }, perm));
+  const cfg = BATCH_KINDS[st.kind];
+  const payload = cfg.table === 'fonts'
+    // 卡片的样式这里一律用新建字体时的那套默认值 —— 跟单条编辑器保持一致，
+    // 导进来之后点开某个字体还能单独调
+    ? rows.map(r=>({
+        name: r.title.trim(), url: r.url.trim(),
+        display_text: r.title.trim(),
+        category: st.category, source: null,
+        languages: [], custom_blocks: [],
+        bg_color: '#FFFFFF', bg_image: null,
+        font_size: 32, letter_spacing: 0, text_align: 'center',
+        user_id: currentUserId,
+      }))
+    : rows.map(r=>({
+        kind: st.kind, title: r.title.trim(), url: r.url.trim(),
+        body: '', link: '', credit: '',
+        tags: st.tags.slice(),
+        allow_repost: st.allowRepost,
+        allow_edit: st.allowEdit,
+        other_permission: st.otherChecked ? st.otherText.trim() : '',
+        user_id: currentUserId, author_nickname: currentUser, author_avatar_url: avatarDataUrl || null,
+      }));
 
   const btn = $('bpSubmit');
   btn.disabled = true; btn.textContent = '发布中…';
-  const { error } = await sb.from('posts').insert(payload);
+  const { error } = await sb.from(cfg.table).insert(payload);
   btn.disabled = false; btn.textContent = '确认发布';
   if(error){ showToast('发布失败：'+error.message); return; }
 
   $('postEditorOverlay').classList.remove('open');
   batchPost = null;
   showToast(`已发布 ${payload.length} 条`);
-  await loadPosts(); renderAll(); showPage('my');
+  if(cfg.table === 'fonts') await loadFonts(); else await loadPosts();
+  renderAll(); showPage('my');
 }
 
 // 发布页那个「其他」面板里的四个入口
@@ -7392,6 +7436,8 @@ $('fontLightboxCard').addEventListener('click', e=>e.stopPropagation());
 $('fontLightboxMask').addEventListener('click', ()=>{ $('fontLightboxMask').classList.remove('show'); });
 
 $('pubCreateFontBtn').addEventListener('click', ()=> openFontEditor(null));
+// 批量走的是跟铃声/头像框同一个列表，只是没有标签权限、多一个分类
+$('pubBatchFontBtn').addEventListener('click', ()=> openPostBatch('font'));
 
 /* ---- read-only viewing ---- */
 let openFontId = null;
