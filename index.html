@@ -125,6 +125,8 @@
   .field-label{font-size:11px; color:var(--text-dim); font-weight:600; margin:10px 0 5px;}
   .field-label:first-child{margin-top:0;}
   .field-input{width:100%; border:1px solid var(--border); border-radius:var(--radius-s); background:transparent; padding:9px 11px; font-size:13px; outline:none;}
+  /* 多行版：textarea 默认是等宽字体，得掰回来；右下角那个拉伸把手只留竖向 */
+  .field-input.multi{font-family:inherit; line-height:1.6; resize:vertical; min-height:60px; display:block;}
   .field-input:focus{border-color:var(--ink);}
   .field-help{font-size:11px; color:var(--text-dim); line-height:1.6; margin:6px 0 0;}
   .key-row{display:flex; gap:6px;}
@@ -411,6 +413,9 @@
   .repo-cell .ph .repo-font-cover{position:absolute; inset:0;}
   /* 边框留着 —— 卡片底色是白的，方格底色也是白的，去掉边框就等于没有卡 */
   .repo-cell .ph .repo-font-cover .font-card-canvas.mini{height:100%; border-radius:0; padding:12px 10px;}
+  .repo-chip-tile .repo-play{width:40px; height:40px; padding:0; border-radius:50%; border:1px solid var(--border); background:var(--bg); color:var(--text); display:flex; align-items:center; justify-content:center; cursor:pointer;}
+  .repo-chip-tile .repo-play svg{width:15px; height:15px;}
+  .repo-chip-tile .repo-play.on{background:var(--ink); color:var(--ink-contrast); border-color:var(--ink);}
   /* 条目详情里的预览：字体给一行大字，铃声给原生播放器 */
   .ri-font-prev{width:100%; padding:20px 12px; margin-bottom:12px; text-align:center; font-size:var(--m, 30px); line-height:1.45; word-break:break-word; background:var(--bg-elev); border-radius:var(--radius-s); color:var(--text);}
   .ri-audio-prev{width:100%; margin-bottom:12px;}
@@ -3556,6 +3561,15 @@ function repoType(it){ const t = it && it.type; return REPO_TYPES[t] ? t : 'emoj
 function repoFileKind(it){ return REPO_TYPES[repoType(it)].file; }
 function repoIsImage(it){ return repoFileKind(it) === 'image'; }
 function repoTypeLabel(it){ return REPO_TYPES[repoType(it)].label; }
+// 预览词给到 60 字：换行也算字数，卡死 40 的话打两行就不够用了
+const REPO_PREVIEW_MAX = 60;
+// 预览字号。条目里存 0 表示没设过 —— 直接丢给 clampNum 的话，0 是个合法数字，
+// 会被夹到下限 12px，于是每一条新字体都用最小号显示，正好是「看不清」本身。
+// clampNum 的注释里就写着这个坑，我还是踩了一次
+function repoPvSize(v){ return v ? clampNum(v, 12, 96, 40) : 40; }
+// 播放 / 暂停两个图形：铃声详情和仓库格子上的试听按钮共用一套
+const PLAY_PATH  = '<path d="M8 5.5v13l11-6.5z"/>';
+const PAUSE_PATH = '<path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/>';
 // blob 自己的 MIME 常常是空的 —— 系统给 ttf 的 MIME 五花八门，空字符串都有。
 // 空着就按存条目时记下的扩展名补，再退回按种类给一个，绝不一律当 png
 function repoBlobMime(it, blob){
@@ -4102,6 +4116,7 @@ $('repoBackBtn').addEventListener('click', ()=>{
   // 一层层往回退：多选 -> 文件夹列表 -> 关掉整页
   if(repoAnyPickMode()){ repoExitPick(); renderRepo(); return; }
   if(repoOpenPack !== null){ repoOpenPack = null; renderRepo(); return; }
+  stopRepoAudio();
   $('repoOverlay').classList.remove('open');
 });
 // 能不能一键上传：站内下载的不行（那是别人的作品），
@@ -4362,9 +4377,76 @@ function renderRepo(){
       ()=>{ if(!repoPickMode){ repoExitPick(); repoPickMode = true; } repoPicked.add(it.id); renderRepo(); },
       ()=>{ if(repoPickMode) toggle(); else openRepoItemSheet(it); });
   });
+  // 正在放的那条要是不在这一屏里了 —— 退回了文件夹列表、换了 tab、换了分类，
+  // 或者干脆被删了 —— 就停掉。页面上再没有任何一个按钮能控制它，
+  // 还让它一直响下去等于耍流氓。id 是 [a-z0-9]，直接拼选择器是安全的
+  if(repoAudioId && !body.querySelector(`[data-audioplay="${repoAudioId}"]`)) stopRepoAudio();
+  // 试听按钮压在格子上，格子自己还挂着「点开详情 / 长按多选」。
+  // click 和 pointerdown 都得拦住 —— 只拦 click 的话，长按 450 毫秒
+  // 照样会把人拖进多选模式
+  body.querySelectorAll('[data-audioplay]').forEach(b=>{
+    b.addEventListener('pointerdown', e=>e.stopPropagation());
+    b.addEventListener('click', e=>{ e.stopPropagation(); e.preventDefault(); repoToggleAudio(b.dataset.audioplay); });
+  });
+  syncRepoAudioTiles();
   fillRepoBlobs(body);
   const cnt = $('repoEntryCount');
   if(cnt) cnt.textContent = repoItems.length ? `${repoItems.length} ${repoUnit(repoItems)}` : '';
+}
+
+/* ---- 仓库里的试听 ---- */
+// 共用一个播放器。同时响两条铃声没有意义，而且几十个格子各挂一个 <audio>
+// 等于让浏览器同时开几十个解码器
+let repoAudioEl = null, repoAudioId = '';
+function repoAudioPlayer(){
+  if(repoAudioEl) return repoAudioEl;
+  repoAudioEl = new Audio();
+  repoAudioEl.preload = 'none';
+  // 只有放完才清掉「在放哪一条」。别拿元素的 paused 去反推 ——
+  // 换 src 的时候浏览器自己会补一个 pause 事件，那一下会把刚设好的
+  // id 抹掉，结果就是：正在放 A，点 B，两条都不亮，B 也放不出来。
+  // 哪个按钮该亮由 syncRepoAudioTiles 现算，不用额外记
+  ['play','playing','pause','ended'].forEach(ev=>repoAudioEl.addEventListener(ev, ()=>{
+    if(ev === 'ended') repoAudioId = '';
+    syncRepoAudioTiles();
+  }));
+  repoAudioEl.addEventListener('error', ()=>{
+    repoAudioId = ''; syncRepoAudioTiles();
+    showToast(audioErrText(repoAudioEl));
+  });
+  return repoAudioEl;
+}
+function syncRepoAudioTiles(){
+  const on = (repoAudioEl && !repoAudioEl.paused) ? repoAudioId : '';
+  document.querySelectorAll('[data-audioplay]').forEach(b=>{
+    const playing = b.dataset.audioplay === on;
+    b.classList.toggle('on', playing);
+    const svg = b.querySelector('svg');
+    if(svg) svg.innerHTML = playing ? PAUSE_PATH : PLAY_PATH;
+  });
+}
+async function repoToggleAudio(id){
+  const it = repoItems.find(x=>x.id===id);
+  if(!it) return;
+  const a = repoAudioPlayer();
+  if(repoAudioId === id && !a.paused){ a.pause(); return; }
+  // 本机传的铃声没有链接，源要从 blob 现取
+  const src = String(it.url||'').trim() || (it.hasBlob ? await repoBlobUrl(id) : '');
+  if(!src){ showToast('这条铃声没有可播放的文件'); return; }
+  const bad = audioUnsupported(src);
+  if(bad){ showToast(`你的浏览器放不了 ${bad} 这种格式，换个浏览器或者下载下来听`); return; }
+  // 换歌之前先明确停掉。直接改 src 的话，浏览器补的那个 pause 事件
+  // 会和紧接着的 play 抢着改按钮状态
+  if(!a.paused){ try{ a.pause(); }catch(e){} }
+  repoAudioId = id;
+  if(a.src !== src){ a.src = src; try{ a.load(); }catch(e){} }
+  try{ await a.play(); }
+  catch(e){ repoAudioId = ''; syncRepoAudioTiles(); showToast('播放失败，可能是链接失效了'); return; }
+  syncRepoAudioTiles();
+}
+function stopRepoAudio(){
+  if(repoAudioEl && !repoAudioEl.paused){ try{ repoAudioEl.pause(); }catch(e){} }
+  repoAudioId = '';
 }
 
 // 一个格子的缩略图。图片照旧；字体用它自己渲染一个「Aa」，铃声给个音符牌。
@@ -4396,7 +4478,12 @@ function repoThumbHtml(it, small){
     return `<div class="repo-font-cover"${src?'':` data-fontblob="${esc(it.id)}"`}>${card}</div>`;
   }
   if(k === 'audio'){
-    return `<div class="repo-chip-tile">${repoTypeIcon('audio')}<div class="kind">铃声</div></div>`;
+    // 文件夹封面那种四分之一的小格子塞不下按钮，给个音符就行。
+    // 这里要是也放按钮，退回文件夹列表之后封面里还留着一个「正在放」的
+    // 按钮，下面那条「看不见就停」的判断会以为它还在屏幕上
+    if(small) return `<div class="repo-chip-tile">${repoTypeIcon('audio')}<div class="kind">铃声</div></div>`;
+    // 音符图标看不出这是哪一条铃声，点开才能听更是白搭 —— 直接给个试听按钮
+    return `<div class="repo-chip-tile"><button class="repo-play" type="button" data-audioplay="${esc(it.id)}" aria-label="试听"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none">${PLAY_PATH}</svg></button><div class="kind">铃声</div></div>`;
   }
   return it.hasBlob ? `<img data-blob="${esc(it.id)}" alt="">`
                     : `<img src="${esc(it.url)}" alt="" loading="lazy" referrerpolicy="no-referrer" ${FADE_ATTR} onerror="this.style.opacity=0">`;
@@ -4740,9 +4827,10 @@ function repoFontRecord(it, src, st){
   return {
     id: it.id, url: src || '',
     name: it.desc || '字体',
-    display_text: String((st && st.preview) || it.desc || 'Aa').slice(0, 40),
+    // 换行要留着 —— 看一款字体的行距、标题配正文，全靠多打一行
+    display_text: String((st && st.preview) || it.desc || 'Aa').slice(0, REPO_PREVIEW_MAX),
     bg_color:'#FFFFFF', bg_image:'',
-    font_size: clampNum(st && st.size, 12, 96, 40), letter_spacing: 0, text_align:'center',
+    font_size: repoPvSize(st && st.size), letter_spacing: 0, text_align:'center',
     languages: (st && st.langs) || [], custom_blocks: [],
   };
 }
@@ -4754,7 +4842,7 @@ function repoPreviewHtml(it){
   }
   if(k === 'audio'){
     return String(it.url||'').trim()
-      ? `<audio class="ri-audio-prev" controls preload="none" crossorigin="anonymous" src="${esc(it.url)}"></audio>`
+      ? `<audio class="ri-audio-prev" controls preload="none" src="${esc(it.url)}"></audio>`
       : `<audio class="ri-audio-prev" controls preload="none" data-audioblob="${esc(it.id)}"></audio>`;
   }
   return `<div style="display:flex; justify-content:center; margin-bottom:12px;">
@@ -4766,7 +4854,7 @@ async function openRepoItemSheet(it){
   let origin = it.origin || '';
   const isFont = repoFileKind(it) === 'font';
   let preview = it.preview || '';
-  let pvSize = clampNum(it.previewSize, 12, 96, 40);
+  let pvSize = repoPvSize(it.previewSize);
   let pvLangs = asArray(it.previewLangs).filter(k=>Object.prototype.hasOwnProperty.call(LANG_SAMPLES, String(k)));
   // 本机传进来的字体没有链接，地址得从 blob 现取，而那是异步的。
   // 先按没有地址画一遍（字还在，只是用默认字体），取到了再画一遍 ——
@@ -4789,7 +4877,7 @@ async function openRepoItemSheet(it){
         ${it.fromTitle ? `<p class="hint" style="margin-top:0;">来自《${esc(it.fromTitle)}》${it.fromAuthor?` · ${esc(it.fromAuthor)}`:''}${it.fromCategory?` · ${esc(it.fromCategory)}`:''}</p>` : ''}
         ${asArray(it.fromTags).length ? tagRowHtml(it.fromTags) : ''}
         ${isFont ? `<div class="field-label"${it.fromTitle?'':' style="margin-top:0;"'}>预览词</div>
-        <input class="field-input" id="riPreview" maxlength="40" value="${esc(preview)}" placeholder="想看什么就打什么，留空用描述词">
+        <textarea class="field-input multi" id="riPreview" rows="2" maxlength="${REPO_PREVIEW_MAX}" placeholder="想看什么就打什么，可以换行，留空用描述词">${esc(preview)}</textarea>
         <div class="chip-row" style="margin-top:8px;">${Object.keys(LANG_SAMPLES)
           .map(k=>`<button class="chip ${pvLangs.includes(k)?'active':''}" data-lang="${esc(k)}">${esc(LANG_SAMPLES[k].label)}</button>`).join('')}</div>
         <p class="field-help">选中的语言会在上面多一行对照样张，方便看这款字体缺不缺字。</p>
@@ -4863,7 +4951,7 @@ async function openRepoItemSheet(it){
       const pEl = $('riPack');
       await repoUpdate(it.id, Object.assign({ desc: desc.trim(), origin: origin.trim(),
         pack: pEl ? pEl.value.trim().slice(0,20) : (it.pack||'') },
-        isFont ? { preview: preview.trim().slice(0,40), previewSize: pvSize, previewLangs: pvLangs.slice() } : {}));
+        isFont ? { preview: preview.replace(/^\s+|\s+$/g,'').slice(0, REPO_PREVIEW_MAX), previewSize: pvSize, previewLangs: pvLangs.slice() } : {}));
       $('repoSheetMask').classList.remove('open'); showToast('已保存'); renderRepo();
     });
     $('riDel').addEventListener('click', async ()=>{
@@ -4979,6 +5067,7 @@ function repoPublishPicked(){
       batchMode = false; batchSelected = new Set();
       updateEditingBanner(); renderPubItems();
       repoExitPick();
+      stopRepoAudio();
       $('repoSheetMask').classList.remove('open');
       $('repoOverlay').classList.remove('open');
       showPage('publish');
@@ -7626,7 +7715,8 @@ function renderPostDetail(justToggled){
           <div class="ring-bar"><i id="ringBarFill"></i></div>
         </div>
       </div>
-      <audio id="ringAudio" src="${esc(pt.url)}" preload="none" crossorigin="anonymous"></audio>
+      <audio id="ringAudio" src="${esc(pt.url)}" preload="none"></audio>
+      ${audioUnsupported(pt.url) ? `<p class="guide-note">你的浏览器放不了 ${esc(audioUnsupported(pt.url))} 这种格式。换个浏览器试试，或者把下面的链接复制出去用别的播放器打开。</p>` : ''}
       <p class="field-help" style="margin-top:10px;">音频由发布者提供的链接直接播放。想保存的话长按下面的链接复制。</p>
       <div class="field-label">链接</div>
       <div class="key-row"><input class="field-input" id="ringUrlInput" readonly value="${esc(pt.url)}"><button class="icon-btn" id="ringCopyBtn" aria-label="复制">复制</button></div>
@@ -7759,6 +7849,32 @@ function renderPostDetail(justToggled){
 }
 
 /* ---- 铃声试听 ---- */
+// 按后缀问一句浏览器认不认这个格式。认不出来就提前说清楚，
+// 别让人对着一个点了没反应的按钮猜。canPlayType 回空串才是"确定不行"，
+// 回 'maybe' 也算行 —— 所以只在明确不行的时候拦
+const AUDIO_MIME_BY_EXT = {
+  '.mp3':'audio/mpeg', '.m4a':'audio/mp4', '.mp4':'audio/mp4', '.aac':'audio/aac',
+  '.wav':'audio/wav', '.ogg':'audio/ogg', '.oga':'audio/ogg', '.opus':'audio/ogg; codecs=opus',
+  '.flac':'audio/flac', '.weba':'audio/webm', '.webm':'audio/webm',
+};
+function audioUnsupported(url){
+  const m = String(url||'').split(/[?#]/)[0].match(/\.[a-z0-9]+$/i);
+  if(!m) return '';
+  const ext = m[0].toLowerCase();
+  const mime = AUDIO_MIME_BY_EXT[ext];
+  if(!mime) return '';                       // 不认识的后缀就别拦，交给浏览器自己判断
+  try{ return document.createElement('audio').canPlayType(mime) ? '' : ext.slice(1).toUpperCase(); }
+  catch(e){ return ''; }
+}
+// 报错要说人话。code 4 是"这个源放不了"——格式不支持、链接失效、
+// 对方服务器不让跨域，三种都归在这一档，所以话不能说死
+function audioErrText(a){
+  const code = a && a.error && a.error.code;
+  if(code === 2) return '网络中断，没能加载这段音频';
+  if(code === 4) return '这段音频放不了：可能是格式不支持，也可能链接已经失效';
+  if(code === 3) return '这段音频解码失败，文件可能是坏的';
+  return '播放失败';
+}
 function stopRingtone(){
   const a = $('ringAudio');
   if(a){ try{ a.pause(); }catch(e){} }
@@ -7766,10 +7882,10 @@ function stopRingtone(){
 function setupRingtone(){
   const a = $('ringAudio'), btn = $('ringPlayBtn'), icon = $('ringPlayIcon');
   const fill = $('ringBarFill'), time = $('ringTime');
-  const PLAY = '<path d="M8 5.5v13l11-6.5z"/>', PAUSE = '<path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/>';
+  const PLAY = PLAY_PATH, PAUSE = PAUSE_PATH;
   const fmt = s => isFinite(s) ? `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}` : '--:--';
   btn.addEventListener('click', ()=>{
-    if(a.paused){ a.play().catch(()=>showToast('播放失败，可能是链接失效或格式不支持')); }
+    if(a.paused){ a.play().catch(()=>showToast(audioErrText(a))); }
     else a.pause();
   });
   a.addEventListener('play',  ()=>{ icon.innerHTML = PAUSE; });
@@ -7779,7 +7895,7 @@ function setupRingtone(){
     if(a.duration) fill.style.width = (a.currentTime/a.duration*100)+'%';
     time.textContent = `${fmt(a.currentTime)} / ${fmt(a.duration)}`;
   });
-  a.addEventListener('error', ()=>{ time.textContent = '这个链接播放不了'; });
+  a.addEventListener('error', ()=>{ time.textContent = audioErrText(a); });
 }
 
 /* ---- 头像框合成 ---- */
