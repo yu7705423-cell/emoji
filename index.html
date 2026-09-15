@@ -135,6 +135,15 @@
   .panel{border:1px solid var(--border); border-radius:var(--radius-m); padding:12px; margin-top:10px; display:none;}
   .panel.open{display:block;}
 
+  .mono-hint{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:600;}
+  .mcp-meta{font-size:11px; color:var(--text-dim); margin-top:1px;}
+  .mcp-note{font-size:11px; color:var(--text-dim);}
+  .mcp-fresh{padding:12px; margin-bottom:6px; border:1px solid var(--border); border-radius:var(--radius-s); background:var(--bg-elev);}
+  .mcp-prev{margin-top:6px; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius-s);
+    background:var(--bg-elev); font:12px/1.7 ui-monospace,SFMono-Regular,Menlo,monospace;
+    white-space:pre-wrap; word-break:break-all;}
+  #mcpSheetBox .field-help{margin:4px 0 0;}
+  #mcpSheetBox .field-label{margin-top:16px;}
   .row-list{border-top:1px solid var(--border-soft);}
   .row-item{display:flex; gap:10px; align-items:flex-start; padding:9px 2px; border-bottom:1px solid var(--border-soft);}
   .thumb{width:40px; height:40px; border-radius:var(--radius-s); overflow:hidden; background:var(--bg-elev); border:1px solid var(--border-soft); flex-shrink:0; position:relative;}
@@ -223,6 +232,10 @@
   .post-cover-in svg{width:30px; height:30px; color:var(--text-faint); stroke-width:1.4;}
   .post-cover-in .excerpt{font-size:11px; line-height:1.7; color:var(--text-dim); overflow:hidden; display:-webkit-box; -webkit-line-clamp:5; -webkit-box-orient:vertical;}
   .post-cover-in img{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; padding:10px;}
+  /* 头像是"几张小图摆在正中"，不是整张铺满，得从上面那条绝对定位里摘出来。
+     不摘的话：图被钉在封面左上角，情侣的两张还会整整齐齐叠在一起，
+     看上去只有一张 —— 之前是圆的，圆饼叠圆饼谁也没看出来。 */
+  .post-cover-in img.post-av{position:relative; inset:auto; padding:0;}
   .post-kind-tag{position:absolute; left:6px; top:6px; font-size:9.5px; letter-spacing:.06em; background:var(--ink); color:var(--ink-contrast); border-radius:999px; padding:2px 7px;}
   /* 铃声试听 */
   .ring-row{display:flex; align-items:center; gap:11px; border:1px solid var(--border); border-radius:var(--radius-m); padding:11px 13px; margin-top:12px;}
@@ -690,6 +703,8 @@
       <div class="cat-sticky">
         <div class="section-title" style="margin-top:0;">分类</div>
         <div class="chip-row" id="catChipRow"></div>
+        <!-- 头像的五个小分类。只在「其他 → 头像」下面出现 -->
+        <div class="chip-row" id="catSubChipRow" style="display:none;"></div>
       </div>
       <div class="section-title">作品</div>
       <div id="catGrid"></div>
@@ -819,6 +834,12 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18v13H3z"/><path d="M3 7l2-3h14l2 3"/><path d="M10 11h4"/></svg>
         <span class="t">我的仓库</span>
         <span class="n" id="repoEntryCount"></span>
+        <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+      </button>
+      <button class="entry-row" id="openMcpBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>
+        <span class="t">MCP 接口</span>
+        <span class="n">给 AI 用</span>
         <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
       </button>
       <div class="ig-tabbar">
@@ -1116,6 +1137,11 @@
   </div>
 
   <!-- generic confirm sheet (deletes) -->
+  <!-- MCP 接口：生成给 AI 前端用的令牌 -->
+  <div class="sheet-mask" id="mcpSheetMask">
+    <div class="sheet-box" id="mcpSheetBox"></div>
+  </div>
+
   <div class="sheet-mask" id="confirmSheetMask">
     <div class="sheet-box" id="confirmSheetBox"></div>
   </div>
@@ -1205,6 +1231,7 @@ const FONT_CATEGORIES = ["系统体","手写体","可爱","复古","艺术"];
 // 四种内容共用一张 posts 表，靠 kind 区分。放一起是因为公共字段（标题/标签/
 // 权限/作者/时间）完全相同，拆开会让首页、分类、收藏、我的每处都变成四段重复。
 const POST_KINDS = [
+  { id:'avatar',       label:'头像',   desc:'分享头像，男女和情侣分开放，情侣是一对两张' },
   { id:'ringtone',     label:'铃声',   desc:'贴一个音频链接，大家可以直接试听' },
   { id:'avatar_frame', label:'头像框', desc:'贴一张头像框图，可以套自己的头像看效果' },
   { id:'tutorial',     label:'教程',   desc:'纯文字分享，写教程或经验' },
@@ -1216,6 +1243,12 @@ let emojiDescs = new Map();
 // collections.needs_desc 这一列到底建了没有。loadCollections 里探测一次，
 // 发布/编辑时靠它决定要不要写这一列。
 let hasNeedsDescCol = false;
+// 头像分类只有两类。分类这一层只回答一个问题：是一张还是一对 ——
+// 因为只有它影响界面（一对要两个链接框、两张并排）。
+// 男女、性向、风格这些统统交给标签，想怎么分怎么分，不用我在这儿定死。
+// 数据库那边有 check 约束盯着，两边必须一致。
+const AVATAR_CATEGORIES = ['普通', '情侣'];
+const isPairCat = c => String(c||'') === '情侣';
 const POST_KIND_LABEL = {};
 POST_KINDS.forEach(k=>{ POST_KIND_LABEL[k.id] = k.label; });
 // 头像框预览的默认底图，用户可以换成自己的头像
@@ -2986,6 +3019,7 @@ function fontBrowseCardHtml(f){
 }
 function postIconSvg(kind){
   const paths = {
+    avatar:       '<circle cx="12" cy="9" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="12" cy="12" r="9.2"/>',
     ringtone:     '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
     avatar_frame: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="12" cy="10" r="3"/><path d="M6.5 19a5.6 5.6 0 0 1 11 0"/>',
     tutorial:     '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M8 7.5h8M8 11h6"/>',
@@ -2997,7 +3031,18 @@ function postIconSvg(kind){
 // 不管哪种都套在同一个 padding-top:100% 的方框里，跟表情包/字体卡片同高。
 function postCoverHtml(pt){
   let inner;
-  if(pt.kind === 'avatar_frame' && pt.url){
+  if(pt.kind === 'avatar' && pt.url){
+    // 方形显示，圆角跟站里其它方缩略图一个值。
+    // 原来是圆的，理由是"圆形更接近戴上去的样子"，但整页看下来一堆圆饼很难看，
+    // 而且跟表情包/字体那些方卡片摆在一起格格不入。
+    // 情侣两张并排，一眼就知道这是一对，不用点进去才发现
+    const one = (u, size) => `<img class="post-av" src="${esc(u)}" loading="lazy" referrerpolicy="no-referrer"
+      onerror="this.style.opacity=0"
+      style="width:${size}px; height:${size}px; object-fit:cover; border-radius:var(--radius-s); background:var(--bg-elev);">`;
+    inner = (pt.url2 || '').trim()
+      ? `<div style="display:flex; gap:8px; align-items:center; justify-content:center;">${one(pt.url, 56)}${one(pt.url2.trim(), 56)}</div>`
+      : one(pt.url, 78);
+  } else if(pt.kind === 'avatar_frame' && pt.url){
     inner = `<img src="${esc(pt.url)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">`;
   } else if(pt.kind === 'tutorial' && (pt.body||'').trim()){
     inner = `<div class="excerpt">${esc(pt.body.trim().slice(0, 90))}</div>`;
@@ -3011,7 +3056,9 @@ function postCardHtml(pt){
   return `<button class="coll-card" data-post-id="${esc(pt.id)}">
     ${postCoverHtml(pt)}
     <div class="coll-name">${esc(pt.title)}</div>
-    <div class="coll-sub">${authorLinkHtml(pt.user_id, pt.author_nickname)} · ${esc(POST_KIND_LABEL[pt.kind]||'其他')}</div>
+    <div class="coll-sub">${authorLinkHtml(pt.user_id, pt.author_nickname)} · ${esc(
+      // 「情侣」值得标出来（一眼知道是一对），「普通」两个字没信息量，写回类型名
+      pt.kind==='avatar' && isPairCat(pt.category) ? '情侣' : (POST_KIND_LABEL[pt.kind]||'其他'))}</div>
     <div class="coll-stats"><span>${heartIcon()}${pt.like_count||0}</span></div>
     ${tagRowHtml(pt.tags)}
   </button>`;
@@ -3188,13 +3235,14 @@ document.querySelectorAll('#homeSortRow .chip').forEach(c=>{
 
 /* ===================== category ===================== */
 let activeCategory = null;
+let activeAvatarCat = null;   // 头像下面的五个小分类
 let catMode = 'collections';
 document.querySelectorAll('#catTypeToggle button').forEach(b=>{
   b.addEventListener('click', ()=>{
     document.querySelectorAll('#catTypeToggle button').forEach(x=>x.classList.remove('active'));
     b.classList.add('active');
     catMode = b.dataset.type;
-    activeCategory = null;
+    activeCategory = null; activeAvatarCat = null;
     renderCategoryChips(); renderCategory();
   });
 });
@@ -3205,13 +3253,33 @@ function renderCategoryChips(){
   // 待描述区跟普通表情包共用同一套分类
   const list = catMode==='fonts' ? FONT_CATEGORIES : catMode==='posts' ? POST_KINDS.map(k=>k.label) : CATEGORIES;
   const all = document.createElement('button'); all.className='chip'+(activeCategory===null?' active':''); all.textContent='全部';
-  all.addEventListener('click',()=>{activeCategory=null; renderCategoryChips(); renderCategory();});
+  all.addEventListener('click',()=>{activeCategory=null; activeAvatarCat=null; renderCategoryChips(); renderCategory();});
   wrap.appendChild(all);
   list.forEach(cat=>{
     const b=document.createElement('button'); b.className='chip'+(activeCategory===cat?' active':''); b.textContent=cat;
-    b.addEventListener('click',()=>{activeCategory=cat; renderCategoryChips(); renderCategory();});
+    b.addEventListener('click',()=>{
+      activeCategory=cat;
+      if(cat!=='头像') activeAvatarCat=null;   // 换去别的类型，头像的小分类就不该还挂着
+      renderCategoryChips(); renderCategory();
+    });
     wrap.appendChild(b);
   });
+
+  // 头像下面再分五类。只有选中「头像」时才出现，平时不占地方
+  const sub = $('catSubChipRow');
+  if(!sub) return;
+  sub.innerHTML = '';
+  if(!(catMode==='posts' && activeCategory==='头像')){ sub.style.display='none'; return; }
+  sub.style.display = '';
+  const mk = (label, val) => {
+    const b=document.createElement('button');
+    b.className='chip'+(activeAvatarCat===val?' active':'');
+    b.textContent=label;
+    b.addEventListener('click',()=>{ activeAvatarCat=val; renderCategoryChips(); renderCategory(); });
+    sub.appendChild(b);
+  };
+  mk('全部', null);
+  AVATAR_CATEGORIES.forEach(c=>mk(c, c));
 }
 function renderCategory(){
   const q = $('catSearch').value.trim().toLowerCase();
@@ -3229,10 +3297,13 @@ function renderCategory(){
   }
   if(catMode==='posts'){
     let list = activeCategory ? posts.filter(pt=>POST_KIND_LABEL[pt.kind]===activeCategory) : posts.slice();
-    if(q){ list = list.filter(pt=>low(pt.title).includes(q) || low(pt.author_nickname).includes(q) || low(pt.body).includes(q) || asArray(pt.tags).some(t=>low(t).includes(q))); }
+    if(activeAvatarCat) list = list.filter(pt=>pt.category===activeAvatarCat);
+    if(q){ list = list.filter(pt=>low(pt.title).includes(q) || low(pt.author_nickname).includes(q) || low(pt.body).includes(q) || low(pt.category).includes(q) || asArray(pt.tags).some(t=>low(t).includes(q))); }
     items = list.map(pt=>({type:'post', data:pt}));
   }
-  renderItemsGrid($('catGrid'), items, activeCategory ? `「${activeCategory}」分类下暂时还没有内容` : '还没有内容');
+  renderItemsGrid($('catGrid'), items,
+    activeAvatarCat ? `「${activeAvatarCat}」下暂时还没有头像`
+    : activeCategory ? `「${activeCategory}」分类下暂时还没有内容` : '还没有内容');
 }
 
 /* ===================== favorites ===================== */
@@ -5088,6 +5159,393 @@ function openRepoSettingsSheet(){
   }
 }
 
+/* ===================== MCP 接口 =====================
+   给接了 MCP 的 AI 前端（Cherry Studio / Chatbox / LobeChat 之类）用的。
+   用户不用再「从这儿导出、再导入到那边」，AI 直接按描述词搜图拿链接。
+
+   令牌代表用户本人，能看到的跟他自己登录时一模一样，不会更多 ——
+   接口那边根本没有留言、通知、我的仓库、成员名单对应的功能。
+   原文只在生成的那一次显示，库里存的是 sha256。 */
+const MCP_BASE = 'https://mcp.yoww2026.cn';
+const MCP_URL = MCP_BASE + '/mcp';
+// 出图写法。AI 前端五花八门，认哪种只有用户自己知道 ——
+// 所以摆在生成令牌的同一页上，选完直接给一条拼好的地址，
+// 不用让人跑到别处再配一次
+const MCP_FORMATS = [
+  { key:'markdown', label:'Markdown 图片', note:'大多数前端（Cherry Studio、Chatbox…）' },
+  // 「描述词 + 链接」这一类，各家的差别其实只在中间放什么：有的冒号，
+  // 有的空格，有的干脆紧挨着。所以不做成好几个预设，做成一个预设加一排分隔符
+  { key:'plain',    label:'描述词 + 链接', note:'自带表情包的那类前端最常见，中间放什么可以挑' },
+  { key:'url',      label:'只发链接',      note:'会自动把链接变成图的前端' },
+  { key:'html',     label:'HTML img 标签', note:'允许 HTML 的前端' },
+  { key:'custom',   label:'自己写模板',    note:'上面都不对时用' },
+];
+// label 是给人看的，v 是真拼进去的字符
+const MCP_SEPS = [
+  { label:'空格', v:' '   }, { label:'：', v:'：'  }, { label:':', v:': ' },
+  { label:'|',    v:' | ' }, { label:'换行', v:'\n' }, { label:'不加', v:'' },
+];
+// 令牌能让 AI 看哪些内容。字体不在里面 —— MCP 那边没有搜字体这回事了
+const MCP_SCOPES = [
+  { key:'emoji',  label:'表情包', note:'按描述词搜表情、取整包' },
+  { key:'avatar', label:'头像',   note:'搜头像，AI 可以发给你说换这个' },
+];
+// 正在编辑哪个令牌的写法。null = 还没建令牌时的那份默认，建完会写进新令牌
+let mcpEditing = null;
+let mcpDraftScopes = [];   // 一个都不预勾：让人自己选，别替他决定
+function mcpScopesOf(t){
+  const v = asArray(t && t.scopes).filter(x=>MCP_SCOPES.some(s=>s.key===x));
+  // 空 = 老令牌，建的时候还没这一列，照旧全开
+  return v.length ? v : MCP_SCOPES.map(s=>s.key);
+}
+function mcpScopeLabel(list){
+  const on = MCP_SCOPES.filter(s=>list.includes(s.key)).map(s=>s.label);
+  return on.length ? on.join('、') : '（一项都没开）';
+}
+let mcpDraft = { key:'markdown', tpl:'', sep:' ' };
+function mcpFmtGet(){ return mcpDraft; }
+function mcpFmtSet(v){ mcpDraft = { key: v.key || 'markdown', tpl: v.tpl || '', sep: v.sep == null ? ' ' : v.sep }; }
+// 令牌里存的是 fmt/tpl 两个字段，界面上是 key/sep/tpl 三个，来回换一下
+function mcpFmtFromToken(t){
+  const tpl = (t && t.tpl) || '';
+  const m = /^\{desc\}([\s\S]*)\{url\}$/.exec(tpl);
+  if(m) return { key:'plain', tpl:'', sep:m[1] };
+  if(tpl) return { key:'custom', tpl, sep:' ' };
+  const f = (t && t.fmt) || 'markdown';
+  return { key: ['markdown','url','html','both'].includes(f) ? f : 'markdown', tpl:'', sep:' ' };
+}
+function mcpFmtToToken(f){
+  if(f.key === 'custom') return { fmt:'', tpl: f.tpl.includes('{url}') ? f.tpl : '' };
+  if(f.key === 'plain')  return { fmt:'', tpl: mcpTpl(f) };
+  return { fmt: f.key === 'markdown' ? '' : f.key, tpl:'' };
+}
+function mcpFmtLabel(f){
+  const o = MCP_FORMATS.find(x=>x.key===f.key);
+  if(f.key !== 'plain') return o ? o.label : 'Markdown 图片';
+  const sp = MCP_SEPS.find(x=>x.v===f.sep);
+  return '描述词 + 链接（中间：' + (sp ? sp.label : JSON.stringify(f.sep)) + '）';
+}
+
+// 当前写法对应的模板。plain 按选中的分隔符现拼
+function mcpTpl(f){
+  f = f || mcpFmtGet();
+  if(f.key === 'custom') return f.tpl;
+  if(f.key === 'plain')  return '{desc}' + (f.sep == null ? ' ' : f.sep) + '{url}';
+  if(f.key === 'url')    return '{url}';
+  if(f.key === 'html')   return '<img src="{url}" alt="{desc}">';
+  return '![{desc}]({url})';
+}
+// 让人一眼看见 AI 会发出什么样的一行 —— 拿它跟前端要的比，比读语法快得多
+const MCP_SAMPLE = { desc:'哈哈哈 笑死', url:'https://img.yoww2026.cn/2026/09/k3x9q2mf7p1a.webp' };
+function mcpPreview(f){
+  return mcpTpl(f).replace(/\{url\}/g, MCP_SAMPLE.url)
+                  .replace(/\{desc\}/g, MCP_SAMPLE.desc)
+                  .replace(/\{n\}/g, '1');
+}
+// 选中的写法拼进地址。markdown 是服务端默认，不用带参数
+// 前端加不了请求头时用的那条：令牌接在路径上，参数还得留在最后
+function mcpUrlWithToken(tok){
+  const u = mcpUrl();
+  const i = u.indexOf('?');
+  return i < 0 ? u + '/' + tok : u.slice(0, i) + '/' + tok + u.slice(i);
+}
+// 地址永远是这一条，一个参数都不带。
+// 写法存在令牌上 —— 有些前端按"MCP 服务配置"算哈希拼进工具名，
+// 地址一改哈希就变，老对话里的调用记录跟新的对不上，整个对话直接报废。
+function mcpUrl(){ return MCP_URL; }
+const MCP_EXPIRY = [
+  { days: 0,   label: '永不过期' },
+  { days: 30,  label: '30 天后过期' },
+  { days: 90,  label: '90 天后过期' },
+  { days: 365, label: '一年后过期' },
+];
+let mcpTokens = [];
+let mcpFresh = null;   // 刚生成还没被收起来的那一个，原文只在这儿留一会
+
+function mcpTimeNote(t){
+  const parts = [];
+  parts.push('创建于 ' + timeAgo(t.created_at));
+  parts.push(t.last_used_at ? '最近用过 ' + timeAgo(t.last_used_at) : '还没用过');
+  if(t.expires_at) parts.push(t.expired ? '已过期' : '到期 ' + new Date(t.expires_at).toLocaleDateString());
+  return parts.join('　·　');
+}
+
+// 能看哪些内容。跟写法一样，令牌行里和「新建」下面都用它
+/* 面板分两屏：列表 和 单个令牌的设置。
+   原来是把设置就地展开塞进列表行里，行被撑得老长、右边按钮挤成一条，
+   整页读下来全是说明文字。换成两屏之后每一屏只干一件事。 */
+let mcpView = 'list';        // list | edit | new
+let mcpEditId = null;
+
+function mcpRowHtml(t){
+  const f = mcpFmtFromToken(t);
+  return `
+    <div class="row-item">
+      <div class="row-main">
+        <div style="font-size:14px; font-weight:600;">${esc(t.name || '未命名')}</div>
+        <div class="mcp-meta mono-hint">${esc(t.prefix)}…</div>
+        <div class="mcp-meta">${esc(mcpScopeLabel(mcpScopesOf(t)))}　·　${esc(mcpFmtLabel(f))}</div>
+        <div class="mcp-meta">${esc(mcpTimeNote(t))}</div>
+      </div>
+      <button class="row-act-sm" data-mcp-open="${esc(t.id)}">设置</button>
+    </div>`;
+}
+
+// 一组可勾的行，权限和写法共用
+function mcpOptList(items, isOn, attr){
+  return `<div class="perm-list">${items.map(o=>`
+    <div class="perm-row" ${attr}="${esc(o.key)}">
+      <div class="sel-check-inline ${isOn(o)?'on':''}">${isOn(o)?CHECK_SVG:''}</div>
+      <span class="perm-label">${esc(o.label)}${o.note?`<br><span class="mcp-note">${esc(o.note)}</span>`:''}</span>
+    </div>`).join('')}</div>`;
+}
+
+async function openMcpSheet(){
+  if(!currentUserId){ showToast('请先登录'); return; }
+  mcpFresh = null; mcpView = 'list'; mcpEditId = null;
+  mcpDraftScopes = []; mcpFmtSet({ key:'markdown', tpl:'', sep:' ' });
+  $('mcpSheetMask').classList.add('open');
+  draw('加载中…');
+  const { data, error } = await sb.rpc('mcp_list_tokens');
+  if(error){
+    // 这套 SQL 还没跑过时就是这个错。别把原始报错甩给用户
+    draw(/does not exist|schema cache/i.test(error.message || '')
+      ? '这个功能还没开通，等站长开一下。' : '加载失败：' + error.message);
+    return;
+  }
+  mcpTokens = asArray(data);
+  draw('');
+
+  // 编辑的是已有令牌就存回数据库；「新建」那份先留在内存里，建出来再一起写
+  async function saveFmt(){
+    const f = mcpFmtGet();
+    if(mcpView === 'edit'){
+      const t0 = mcpTokens.find(x=>x.id === mcpEditId);
+      if(t0) Object.assign(t0, mcpFmtToToken(f));   // 界面先按新值显示，别等网络
+    }
+    draw('');
+    if(mcpView !== 'edit') return;
+    const payload = mcpFmtToToken(f);
+    const { data, error } = await sb.rpc('mcp_set_token_format',
+      { p_id: mcpEditId, p_fmt: payload.fmt, p_tpl: payload.tpl });
+    if(error || !data || !data.ok) showToast('写法没保存上，检查网络后重试');
+  }
+
+  function draw(note){
+    const fmt = mcpFmtGet();
+    const editing = mcpView === 'edit' ? mcpTokens.find(t=>t.id === mcpEditId) : null;
+    if(mcpView === 'edit' && !editing){ mcpView = 'list'; }
+
+    const title = mcpView === 'list' ? 'MCP 接口'
+                : mcpView === 'new'  ? '新建令牌'
+                : esc(editing.name || '未命名');
+    const back = mcpView === 'list' ? '' :
+      `<button class="icon-btn" id="mcpBack" aria-label="返回"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>`;
+
+    $('mcpSheetBox').innerHTML = `
+      <div class="sheet-head">${back}<span class="t">${title}</span>
+        <button class="icon-btn" id="mcpClose" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+      <div class="sheet-scroll">${
+        mcpView === 'list' ? listHtml(note) : formHtml(fmt, editing)
+      }<div style="height:20px;"></div></div>`;
+
+    bind();
+  }
+
+  function listHtml(note){
+    // 刚生成的令牌单独一块摆最上面：原文只有这一次机会能看到
+    const fresh = mcpFresh ? `
+      <div class="mcp-fresh">
+        <div class="field-label" style="margin-top:0;">令牌已生成</div>
+        <p class="field-help" style="color:#c0392b; margin-top:2px;"><b>只显示这一次</b>，现在就复制走。丢了就撤销掉重新建一个。</p>
+        ${copyRowHtml('令牌', mcpFresh, 'mcpTok')}
+        ${copyRowHtml('请求头', 'Authorization: Bearer ' + mcpFresh, 'mcpHdr')}
+        <p class="field-help">前端加不了请求头的话，服务地址改填这条：</p>
+        ${copyRowHtml('地址（带令牌）', mcpUrlWithToken(mcpFresh), 'mcpUrl2')}
+        <div class="btn-row"><button class="btn-outline" id="mcpDone">我存好了</button></div>
+      </div>` : '';
+
+    const rows = mcpTokens.length
+      ? `<div class="row-list">${mcpTokens.map(mcpRowHtml).join('')}</div>`
+      : `<p class="field-help">${esc(note || '还没有令牌。')}</p>`;
+
+    return `
+      ${fresh}
+      ${copyRowHtml('服务地址', mcpUrl(), 'mcpUrl')}
+      <p class="field-help">在 AI 前端里加一个 MCP 服务，类型选 <b>Streamable HTTP</b>，地址填它。</p>
+
+      <div class="field-label">图发不出来？走这条</div>
+      <p class="field-help">很多前端只显示「它自己取回来的图」，AI 贴的链接一律当文字。
+        这种就把我们当成<b>绘图服务</b>填进去：AI 说要发表情，前端自己来我们这儿取，
+        取回去的图走它原生的显图那条路，就出得来了。不用复制粘贴。</p>
+      ${copyRowHtml('绘图地址 · OpenAI 兼容', MCP_BASE + '/v1', 'mcpImgA')}
+      ${copyRowHtml('绘图地址 · SD WebUI 兼容', MCP_BASE, 'mcpImgB')}
+      <p class="field-help">前端的绘图设置里有哪种就填哪种，密钥 / API Key 填<b>同一个令牌</b>。
+        权限跟着令牌走，没勾头像就搜不到头像。</p>
+
+      <div class="field-label">浏览器脚本</div>
+      <p class="field-help">装一个油猴脚本，在任何 AI 聊天网页的右下角多一个按钮：
+        点一张图直接写进输入框，或者把你<b>点赞过的</b>表情一次性导进前端自己的表情列表 ——
+        导完 char 就原生会发了，不用调工具。</p>
+      ${copyRowHtml('安装地址', MCP_BASE + '/script', 'mcpScript')}
+      <p class="field-help">令牌还是这一个。脚本里只会出现你点赞过的包，跟站上「点赞后可下载」是同一条线。</p>
+
+      <div class="field-label">我的令牌</div>
+      <p class="field-help">一个前端配一个。能看什么、怎么出图都跟着令牌走，各自互不影响。</p>
+      ${rows}
+      ${note && mcpTokens.length ? `<p class="field-help">${esc(note)}</p>` : ''}
+      <div class="btn-row"><button class="btn-solid" id="mcpNewBtn">新建令牌</button></div>`;
+  }
+
+  function formHtml(fmt, editing){
+    const isNew = mcpView === 'new';
+    const on = isNew ? mcpDraftScopes : mcpScopesOf(editing);
+    return `
+      ${isNew ? `
+        <input class="field-input" id="mcpName" placeholder="给它起个名字，比如「Cherry Studio」" maxlength="40">
+        <select class="field-input" id="mcpDays" style="margin-top:8px;">
+          ${MCP_EXPIRY.map(e=>`<option value="${e.days}">${e.label}</option>`).join('')}
+        </select>` : `
+        <div class="mcp-meta mono-hint" style="margin-bottom:2px;">${esc(editing.prefix)}…</div>
+        <div class="mcp-meta">${esc(mcpTimeNote(editing))}</div>`}
+
+      <div class="field-label">能让 AI 看什么</div>
+      ${mcpOptList(MCP_SCOPES, sc=>on.includes(sc.key), 'data-mcp-scope')}
+      <p class="field-help">没勾的那类，AI 那边连功能都看不见。至少勾一个。</p>
+
+      <div class="field-label">出图写法</div>
+      ${mcpOptList(MCP_FORMATS, o=>fmt.key===o.key, 'data-mcp-fmt')}
+
+      ${fmt.key === 'plain' ? `
+        <div class="field-label">中间放什么</div>
+        <div class="chip-row">
+          ${MCP_SEPS.map(sp=>`<button type="button" class="chip${fmt.sep===sp.v?' active':''}" data-mcp-sep="${esc(sp.v)}">${esc(sp.label)}</button>`).join('')}
+        </div>
+        <input class="field-input" id="mcpSep" placeholder="或者自己填" value="${esc(MCP_SEPS.some(sp=>sp.v===fmt.sep)?'':fmt.sep)}" style="margin-top:8px;">` : ''}
+
+      ${fmt.key === 'custom' ? `
+        <input class="field-input" id="mcpTpl" placeholder="例如：[图片:{url}]" value="${esc(fmt.tpl)}" style="margin-top:8px;">
+        <p class="field-help">可用 <b class="mono-hint">{url}</b> <b class="mono-hint">{desc}</b> <b class="mono-hint">{n}</b>，必须含 {url}。</p>` : ''}
+
+      <div class="field-label">AI 会发成这样</div>
+      <div class="mcp-prev">${esc(mcpPreview(fmt))}</div>
+      <p class="field-help">跟你那个前端要的样子对一下，一样就对了。</p>
+
+      <div class="btn-row">
+        ${isNew
+          ? '<button class="btn-solid" id="mcpCreate">生成令牌</button>'
+          : '<button class="btn-outline" id="mcpDel">撤销这个令牌</button>'}
+      </div>`;
+  }
+
+  function bind(){
+    const box = $('mcpSheetBox');
+    $('mcpClose').addEventListener('click', ()=>{ mcpFresh = null; $('mcpSheetMask').classList.remove('open'); });
+    const back = $('mcpBack');
+    if(back) back.addEventListener('click', ()=>{ mcpView = 'list'; mcpEditId = null; draw(''); });
+
+    const done = $('mcpDone');
+    if(done) done.addEventListener('click', ()=>{ mcpFresh = null; draw(''); });
+    bindCopyRows(box);
+
+    box.querySelectorAll('[data-mcp-open]').forEach(b=>{
+      b.addEventListener('click', ()=>{
+        mcpEditId = b.dataset.mcpOpen; mcpView = 'edit';
+        const t = mcpTokens.find(x=>x.id === mcpEditId);
+        if(t) mcpFmtSet(mcpFmtFromToken(t));   // 打开哪个就读哪个的，别拿上一个的
+        draw('');
+      });
+    });
+
+    const nb = $('mcpNewBtn');
+    if(nb) nb.addEventListener('click', ()=>{
+      mcpView = 'new'; mcpDraftScopes = [];
+      mcpFmtSet({ key:'markdown', tpl:'', sep:' ' });
+      draw('');
+    });
+
+    box.querySelectorAll('[data-mcp-scope]').forEach(el=>{
+      el.addEventListener('click', async ()=>{
+        const key = el.dataset.mcpScope;
+        const isNew = mcpView === 'new';
+        const t = isNew ? null : mcpTokens.find(x=>x.id === mcpEditId);
+        const cur = isNew ? mcpDraftScopes.slice() : mcpScopesOf(t);
+        const next = cur.includes(key) ? cur.filter(x=>x!==key) : cur.concat([key]);
+        if(!next.length){ showToast('至少要勾一个'); return; }
+        if(isNew){ mcpDraftScopes = next; draw(''); return; }
+        if(t) t.scopes = next;
+        draw('');
+        const { data, error } = await sb.rpc('mcp_set_token_scopes', { p_id: mcpEditId, p_scopes: next });
+        if(error || !data || !data.ok) showToast((data && data.error) || '没保存上，检查网络后重试');
+      });
+    });
+
+    box.querySelectorAll('[data-mcp-fmt]').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        // 换个大类别把调好的分隔符和模板丢掉 —— 来回比对时会反复切
+        const cur = mcpFmtGet();
+        mcpFmtSet({ key: el.dataset.mcpFmt, tpl: cur.tpl, sep: cur.sep });
+        saveFmt();
+      });
+    });
+    box.querySelectorAll('[data-mcp-sep]').forEach(b=>{
+      b.addEventListener('click', ()=>{ mcpFmtSet({ key:'plain', tpl: mcpFmtGet().tpl, sep: b.dataset.mcpSep }); saveFmt(); });
+    });
+    // 每敲一个字就重画会打断中文输入法，所以只在离开输入框时存
+    const sepInput = $('mcpSep');
+    if(sepInput) sepInput.addEventListener('change', ()=>{
+      const v = sepInput.value;                     // 不 trim：想要的可能正是一个空格
+      if(v !== '') mcpFmtSet({ key:'plain', tpl: mcpFmtGet().tpl, sep: v });
+      saveFmt();
+    });
+    const tplInput = $('mcpTpl');
+    if(tplInput) tplInput.addEventListener('change', ()=>{
+      mcpFmtSet({ key:'custom', tpl: tplInput.value.trim(), sep: mcpFmtGet().sep });
+      saveFmt();
+    });
+
+    const create = $('mcpCreate');
+    if(create) create.addEventListener('click', async ()=>{
+      if(!mcpDraftScopes.length){ showToast('先选一下这个令牌能让 AI 看什么'); return; }
+      create.disabled = true; create.textContent = '生成中…';
+      const days = Number($('mcpDays').value) || 0;
+      const payload = mcpFmtToToken(mcpFmtGet());
+      const { data, error } = await sb.rpc('mcp_create_token', {
+        p_name: $('mcpName').value.trim(), p_days: days || null,
+        p_fmt: payload.fmt, p_tpl: payload.tpl,
+      });
+      create.disabled = false; create.textContent = '生成令牌';
+      if(error){ showToast('生成失败：'+error.message); return; }
+      if(!data || !data.ok){ showToast((data && data.error) || '生成失败'); return; }
+      // scopes 单独存：建令牌那个函数没这个参数，加进去就得改签名，
+      // 而改签名会让还没跑新 SQL 的人连令牌都建不了
+      await sb.rpc('mcp_set_token_scopes', { p_id: data.id, p_scopes: mcpDraftScopes.slice() });
+      mcpFresh = data.token;
+      const { data: rows } = await sb.rpc('mcp_list_tokens');
+      mcpTokens = asArray(rows);
+      mcpView = 'list'; mcpEditId = null;
+      draw('');
+      box.querySelector('.sheet-scroll').scrollTop = 0;
+    });
+
+    const del = $('mcpDel');
+    if(del) del.addEventListener('click', ()=>{
+      const id = mcpEditId;
+      const t = mcpTokens.find(x=>x.id === id);
+      openConfirmSheet('撤销令牌', `「${(t && t.name) || '这个令牌'}」撤销后立刻失效，填了它的那个前端会马上搜不到东西。`,
+        '撤销', async ()=>{
+          const { data, error } = await sb.rpc('mcp_revoke_token', { p_id: id });
+          if(error || !data || !data.ok){ showToast('撤销失败'); return; }
+          mcpTokens = mcpTokens.filter(x=>x.id !== id);
+          mcpView = 'list'; mcpEditId = null;
+          showToast('已撤销'); draw('');
+        });
+    });
+  }
+}
+
+$('openMcpBtn').addEventListener('click', openMcpSheet);
+
 /* ===================== my (IG-style) ===================== */
 let myTab = 'works';
 function setMyTab(tab){
@@ -6533,6 +6991,24 @@ function renderPostDetail(justToggled){
       <p class="field-help" style="margin-top:10px;">音频由发布者提供的链接直接播放。想保存的话长按下面的链接复制。</p>
       <div class="field-label">链接</div>
       <div class="key-row"><input class="field-input" id="ringUrlInput" readonly value="${esc(pt.url)}"><button class="icon-btn" id="ringCopyBtn" aria-label="复制">复制</button></div>`;
+  } else if(pt.kind === 'avatar'){
+    const pair = (pt.url2 || '').trim();
+    const shot = (u, who) => `<div style="text-align:center;">
+      <img src="${esc(u)}" alt="" referrerpolicy="no-referrer" onerror="this.style.opacity=.15"
+        style="width:${pair ? 128 : 172}px; height:${pair ? 128 : 172}px; object-fit:cover; border-radius:var(--radius-s); background:var(--bg-elev);">
+      ${who ? `<div style="font-size:12px; color:var(--text-dim); margin-top:6px;">${who}</div>` : ''}
+    </div>`;
+    const urlRow = (label, u, id) => `<div class="field-label">${label}</div>
+      <div class="key-row"><input class="field-input" id="${id}" readonly value="${esc(u)}"><button class="icon-btn" data-copy-input="${id}" aria-label="复制">复制</button></div>`;
+    bodyHtml = `
+      <div style="display:flex; gap:18px; justify-content:center; flex-wrap:wrap; margin:6px 0 4px;">
+        ${shot(pt.url, pair ? '左' : '')}
+        ${pair ? shot(pair, '右') : ''}
+      </div>
+      ${pair ? '<p class="field-help" style="text-align:center;">情侣头像，一对两张</p>' : ''}
+      ${urlRow(pair ? '第一张（左）链接' : '图片链接', pt.url, 'avUrl1')}
+      ${pair ? urlRow('第二张（右）链接', pair, 'avUrl2') : ''}
+      <p class="field-help">长按图片可以直接保存。${pair ? '情头记得两张都存，别只存一张。' : ''}</p>`;
   } else if(pt.kind === 'avatar_frame'){
     bodyHtml = `
       ${avatarFrameUiHtml('af')}
@@ -6581,6 +7057,13 @@ function renderPostDetail(justToggled){
     const b = $(btn); if(!b) return;
     b.addEventListener('click', async ()=>{
       try{ await navigator.clipboard.writeText($(inp).value); showToast('已复制'); }catch(e){ showToast('复制失败'); }
+    });
+  });
+  $('postDetailBody').querySelectorAll('[data-copy-input]').forEach(b=>{
+    b.addEventListener('click', async ()=>{
+      const el = $(b.dataset.copyInput);
+      if(!el) return;
+      try{ await navigator.clipboard.writeText(el.value); showToast('已复制'); }catch(e){ showToast('复制失败'); }
     });
   });
   if(pt.kind === 'ringtone') setupRingtone();
@@ -7157,6 +7640,8 @@ function openPostEditor(kind, existing){
     body:  existing ? existing.body  : '',
     link:  existing ? existing.link  : '',
     credit:existing ? existing.credit: '',
+    url2:  existing ? (existing.url2 || '') : '',
+    category: existing ? (existing.category || '') : (kind === 'avatar' ? AVATAR_CATEGORIES[0] : ''),
     tags:  existing ? asArray(existing.tags).slice() : [],
     tagInput: '',
     allowRepost: existing ? !!existing.allow_repost : false,
@@ -7174,6 +7659,7 @@ function openPostEditor(kind, existing){
     const g = id => $(id) ? $(id).value : null;
     const v = g('peTitle');  if(v!==null) st.title = v;
     const u = g('peUrl');    if(u!==null) st.url = u;
+    const u2 = g('peUrl2');  if(u2!==null) st.url2 = u2;
     const b = g('peBody');   if(b!==null) st.body = b;
     const l = g('peLink');   if(l!==null) st.link = l;
     const c = g('peCredit'); if(c!==null) st.credit = c;
@@ -7195,6 +7681,35 @@ function openPostEditor(kind, existing){
       fields = `<div class="field-label">音频链接</div>
         <input class="field-input" id="peUrl" placeholder="https://…  mp3 / m4a 等直链" value="${esc(st.url)}">
         <p class="field-help">贴直链，不要贴网盘或播放页地址，否则试听放不出来。</p>`;
+    } else if(st.kind === 'avatar'){
+      const pair = isPairCat(st.category);
+      const cell = (u, who) => `<div style="text-align:center;">
+        ${u.trim()
+          ? `<img src="${esc(u.trim())}" alt="" referrerpolicy="no-referrer" onerror="this.style.opacity=.15"
+               style="width:64px; height:64px; object-fit:cover; border-radius:var(--radius-s); background:var(--bg-elev);">`
+          : `<div style="width:64px; height:64px; border-radius:var(--radius-s); background:var(--bg-elev); border:1px dashed var(--border);"></div>`}
+        ${who ? `<div style="font-size:11px; color:var(--text-dim); margin-top:4px;">${who}</div>` : ''}
+      </div>`;
+      fields = `<div class="field-label">分类</div>
+        <div class="chip-row" id="peCatRow">
+          ${AVATAR_CATEGORIES.map(c=>`<button type="button" class="chip${st.category===c?' active':''}" data-pe-cat="${esc(c)}">${esc(c)}</button>`).join('')}
+        </div>
+        <p class="field-help">性别、性向、风格这些用下面的标签写，搜得到。</p>
+
+        <div class="field-label">${pair ? '第一张（左）' : '头像图片链接'}</div>
+        <input class="field-input" id="peUrl" placeholder="https://…  方形图效果最好" value="${esc(st.url)}">
+        ${pair ? `<div class="field-label">第二张（右）</div>
+          <input class="field-input" id="peUrl2" placeholder="https://…  情侣的另一半" value="${esc(st.url2)}">` : ''}
+        <div class="btn-row" style="margin-top:10px;">
+          <button type="button" class="btn-outline" id="pePickBtn"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 16l-5-5-4 4-2-2-4 4"/></svg>${pair ? '选两张图上传' : '选图上传'}</button>
+        </div>
+        <div style="display:flex; gap:14px; align-items:flex-start; margin-top:12px;">
+          ${cell(st.url, pair ? '左' : '')}
+          ${pair ? cell(st.url2, '右') : ''}
+        </div>
+        <p class="field-help">${pair
+          ? '一对发成一条，选图可以一次选两张，自动填进左右。'
+          : '方形图效果最好，会自动压缩转成链接。'}</p>`;
     } else if(st.kind === 'avatar_frame'){
       fields = `<div class="field-label">头像框图片链接</div>
         <input class="field-input" id="peUrl" placeholder="https://…  建议透明底 PNG" value="${esc(st.url)}">
@@ -7262,12 +7777,30 @@ function openPostEditor(kind, existing){
       draw(); if(st.otherChecked){ const el=$('peOther'); if(el) el.focus(); }
     });
     const other = $('peOther'); if(other) other.addEventListener('input', e=>{ st.otherText = e.target.value; });
+    $('postEditorBody').querySelectorAll('[data-pe-cat]').forEach(b=>{
+      b.addEventListener('click', ()=>{
+        sync();
+        const was = isPairCat(st.category);
+        st.category = b.dataset.peCat;
+        // 从情侣切回单人时第二张就没地方放了，留着只会悄悄发出去
+        if(was && !isPairCat(st.category)) st.url2 = '';
+        draw();
+      });
+    });
     const pickBtn = $('pePickBtn');
     if(pickBtn) pickBtn.addEventListener('click', async ()=>{
       sync();                                   // 选图会重画这一块，先把已经敲进去的东西收回来
-      const { urls } = await upWithButton(pickBtn, false);
+      const pair = st.kind === 'avatar' && isPairCat(st.category);
+      const { urls } = await upWithButton(pickBtn, pair);
       if(!urls.length) return;
-      st.url = urls[0];
+      if(pair){
+        // 一次选两张就按顺序填左右；只选了一张就填还空着的那个位置
+        if(urls.length >= 2){ st.url = urls[0]; st.url2 = urls[1]; }
+        else if(!st.url.trim()) st.url = urls[0];
+        else st.url2 = urls[0];
+      } else {
+        st.url = urls[0];
+      }
       draw();
     });
     const tryBtn = $('peTryBtn');
@@ -7285,6 +7818,11 @@ function openPostEditor(kind, existing){
     const title = st.title.trim();
     if(!title){ showToast('请填写标题'); return; }
     if((st.kind==='ringtone' || st.kind==='avatar_frame') && !st.url.trim()){ showToast('请填写链接'); return; }
+    if(st.kind==='avatar'){
+      if(!AVATAR_CATEGORIES.includes(st.category)){ showToast('请选一个分类'); return; }
+      if(!st.url.trim()){ showToast('请填写头像图片链接'); return; }
+      if(isPairCat(st.category) && !st.url2.trim()){ showToast('情侣头像要两张，第二张还没填'); return; }
+    }
     if(st.kind==='tutorial' && !st.body.trim()){ showToast('请填写正文'); return; }
     if(st.kind==='guide' && !st.link.trim()){ showToast('请填写链接'); return; }
 
@@ -7292,6 +7830,9 @@ function openPostEditor(kind, existing){
       kind: st.kind,
       title,
       url: st.url.trim(),
+      // 这两列只有头像用得上，别的 kind 一律写空，免得编辑过 kind 之后留下脏数据
+      url2: (st.kind==='avatar' && isPairCat(st.category)) ? st.url2.trim() : null,
+      category: st.kind==='avatar' ? st.category : null,
       body: st.body.trim(),
       link: st.link.trim(),
       credit: st.credit.trim(),
