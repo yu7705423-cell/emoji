@@ -407,6 +407,10 @@
   .rfc-cell .repo-chip-tile .mark{font-size:13px;}   /* 封面里的小格子一律 13px，盖掉 --m */
   .rfc-cell .repo-chip-tile svg{width:13px; height:13px;}
   .rfc-cell .repo-chip-tile .kind{display:none;}
+  /* 字体格子上摆的是真卡片，铺满整个方格，不留圆角和边框 —— 方格本身已经有了 */
+  .repo-cell .ph .repo-font-cover{position:absolute; inset:0;}
+  /* 边框留着 —— 卡片底色是白的，方格底色也是白的，去掉边框就等于没有卡 */
+  .repo-cell .ph .repo-font-cover .font-card-canvas.mini{height:100%; border-radius:0; padding:12px 10px;}
   /* 条目详情里的预览：字体给一行大字，铃声给原生播放器 */
   .ri-font-prev{width:100%; padding:20px 12px; margin-bottom:12px; text-align:center; font-size:var(--m, 30px); line-height:1.45; word-break:break-word; background:var(--bg-elev); border-radius:var(--radius-s); color:var(--text);}
   .ri-audio-prev{width:100%; margin-bottom:12px;}
@@ -4378,10 +4382,18 @@ function repoFontMarkHtml(it, cls, max, sizes){
   const mark = fam ? `font-family:'${fam}'; ` : '';
   return `<div class="${cls}"${fam?'':` data-fontblob="${esc(it.id)}"`} style="${mark}--m:${size}px;">${esc(sample)}</div>`;
 }
-function repoThumbHtml(it){
+// small = 文件夹封面里那种四分之一的小格子。那儿塞不下一张卡，给个名字牌就行；
+// 正经格子上直接把字体卡摆出来 —— 设了预览词却要点开才看得见，
+// 等于没设。用的还是 fontCanvasHtml 的 mini，跟首页那排字体卡一模一样
+function repoThumbHtml(it, small){
   const k = repoFileKind(it);
   if(k === 'font'){
-    return `<div class="repo-chip-tile">${repoFontMarkHtml(it, 'mark', 4, [26,26,22,18])}<div class="kind">字体</div></div>`;
+    if(small) return `<div class="repo-chip-tile">${repoFontMarkHtml(it, 'mark', 4, [26,26,22,18])}<div class="kind">字体</div></div>`;
+    const src = String(it.url||'').trim();
+    const card = fontCanvasHtml(repoFontRecord(it, src, { preview: it.preview, size: it.previewSize, langs: [] }), true);
+    // 本机字体的地址要等 blob，先摆出来（字还在，只是先用默认字体），
+    // fillRepoBlobs 随后把 family 补进卡里
+    return `<div class="repo-font-cover"${src?'':` data-fontblob="${esc(it.id)}"`}>${card}</div>`;
   }
   if(k === 'audio'){
     return `<div class="repo-chip-tile">${repoTypeIcon('audio')}<div class="kind">铃声</div></div>`;
@@ -4408,7 +4420,7 @@ function repoFolderCoverHtml(items){
   const cells = (items||[]).slice(0, 4);
   while(cells.length < 4) cells.push(null);
   const inner = cells.map(it=> it
-    ? `<div class="rfc-cell">${repoThumbHtml(it)}</div>`
+    ? `<div class="rfc-cell">${repoThumbHtml(it, true)}</div>`
     : `<div class="rfc-cell"></div>`).join('');
   return `<div class="repo-folder-cover">${inner}</div>`;
 }
@@ -4451,7 +4463,11 @@ async function fillRepoBlobs(root){
     const id = el.dataset.fontblob;
     const u = await repoBlobUrl(id);
     if(!u) continue;
-    el.style.fontFamily = `'${ensureFontFace({ id, url: u })}'`;
+    const fam = ensureFontFace({ id, url: u });
+    el.style.fontFamily = `'${fam}'`;
+    // 卡片里的字自带行内 font-family，继承压不住，得挨个改
+    el.querySelectorAll('.font-card-main, .font-lang-block')
+      .forEach(n=>{ n.style.fontFamily = `'${fam}',sans-serif`; });
   }
 }
 
