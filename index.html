@@ -483,6 +483,21 @@
   .sel-check{position:absolute; top:4px; right:4px; width:16px; height:16px; border-radius:50%; background:rgba(255,255,255,.9); border:1px solid var(--border); display:flex; align-items:center; justify-content:center;}
   .sel-check.on{background:var(--ink); border-color:var(--border);}
   .sel-check svg{width:10px; height:10px;}
+  /* 合并头像：挑要合并的那几条 */
+  .mg-bar{display:flex; align-items:center; gap:10px; margin:10px 0 4px;}
+  .mg-bar .n{flex:1; min-width:0; font-size:12px; color:var(--text-dim);}
+  /* 站里的按钮默认 width:100%（它们平时都独占一行）。直接摆进这一行的话
+     两个按钮各要 100%，把左边那句"已选 N 条"挤成竖着一个字一行 */
+  .mg-bar button{width:auto; flex:0 0 auto; padding:8px 14px;}
+  .mg-grid{display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-top:10px;}
+  .mg-cell{position:relative; padding:0; border:1px solid var(--border-soft); background:var(--bg-elev);
+           border-radius:var(--radius-s); overflow:hidden; cursor:pointer; text-align:left;}
+  .mg-cell img{width:100%; aspect-ratio:1/1; object-fit:cover; display:block; background:var(--bg-elev);}
+  .mg-cell .cap{font-size:10.5px; line-height:1.35; color:var(--text-dim); padding:4px 5px 5px;
+                overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .mg-cell.on{border-color:var(--ink);}
+  .mg-cell.off{opacity:.4;}
+
   .sheet-scroll{padding:12px 16px; overflow-y:auto;}
   .sheet-footer{padding:14px 16px; flex-shrink:0; border-top:1px solid var(--border-soft);}
   .result-file{font-size:13px; font-family:ui-monospace, monospace; margin:6px 0 12px;}
@@ -5706,6 +5721,125 @@ function setMyTab(tab){
 document.querySelectorAll('.ig-tab, .ig-stat').forEach(el=>{
   el.addEventListener('click', ()=>setMyTab(el.dataset.tab));
 });
+/* ===================== 把散着的头像并成一个合集 =====================
+   头像改成合集之前，大家是一张一条传的。几十条躺在那儿，
+   一条条打开加链接再一条条删太折磨人，所以给个工具。
+
+   三条硬规矩：
+   · 只动自己的。别人的作品一条都碰不到。
+   · 普通和情侣不能混。一个是单张一个是一对，混进一个合集里显示不出来。
+   · 留最早的那条。合并不该变成一个把自己顶到首页最前面的办法。 */
+let mergeMode = false;
+let mergeSel = new Set();
+
+function myAvatarPosts(){
+  return posts.filter(pt => pt.kind === 'avatar' && pt.user_id === currentUserId)
+              .sort((a,b)=> new Date(a.created_at) - new Date(b.created_at));
+}
+
+function exitMerge(){ mergeMode = false; mergeSel.clear(); renderMy(); }
+
+function renderMergePicker(box){
+  const list = myAvatarPosts();
+  const sel = list.filter(pt=>mergeSel.has(pt.id));
+  // 选了之后，跟已选那些不同分类的就灰掉点不动 —— 与其让人选完再被拦，
+  // 不如一开始就看得出哪些能一起合
+  const lockCat = sel.length ? sel[0].category : null;
+  const n = sel.length;
+  const total = sel.reduce((k,pt)=>k + avatarImages(pt).length, 0);
+
+  box.innerHTML = `
+    <div class="mg-bar">
+      <div class="n">${n ? `已选 ${n} 条，共 ${total} ${isPairCat(lockCat)?'对':'张'}` : '选两条以上一起合并'}</div>
+      <button class="btn-outline" id="mgCancel">退出</button>
+      <button class="btn-solid" id="mgGo"${n < 2 ? ' disabled' : ''}>合并</button>
+    </div>
+    ${lockCat ? `<p class="field-help" style="margin-top:0;">正在合并「${esc(lockCat)}」，另一类的已经灰掉了。</p>` : ''}
+    <div class="mg-grid">
+      ${list.map(pt=>{
+        const on = mergeSel.has(pt.id);
+        const off = !on && lockCat && pt.category !== lockCat;
+        const cover = (avatarImages(pt)[0] || {}).url || '';
+        return `<button class="mg-cell${on?' on':''}${off?' off':''}" data-mg="${esc(pt.id)}"${off?' disabled':''}>
+          ${cover ? `<img src="${esc(cover)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.opacity=0">` : ''}
+          <span class="sel-check${on?' on':''}">${on?CHECK_SVG:''}</span>
+          <div class="cap">${esc(pt.title || '（没名字）')}</div>
+        </button>`;
+      }).join('')}
+    </div>`;
+
+  box.querySelectorAll('[data-mg]').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      const id = b.dataset.mg;
+      if(mergeSel.has(id)) mergeSel.delete(id); else mergeSel.add(id);
+      renderMy();
+    });
+  });
+  $('mgCancel').addEventListener('click', exitMerge);
+  const go = $('mgGo');
+  if(go && !go.disabled) go.addEventListener('click', ()=>openMergeConfirm(sel));
+}
+
+/* 确认这一步不能省。合并要删掉别的条目，删了找不回来，
+   所以把"留哪条、删哪几条、丢多少赞"全摊开写清楚再让人点。 */
+function openMergeConfirm(sel){
+  const keep = sel[0];                                  // 最早那条
+  const drop = sel.slice(1);
+  const total = sel.reduce((k,pt)=>k + avatarImages(pt).length, 0);
+  const lostLikes = drop.reduce((k,pt)=>k + (pt.like_count||0), 0);
+  const pair = isPairCat(keep.category);
+
+  $('confirmSheetBox').innerHTML = `
+    <div class="sheet-head"><span class="t">合并 ${sel.length} 条头像</span>
+      <button class="icon-btn" id="mgCloseBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+    <div class="sheet-scroll">
+      <div class="field-label" style="margin-top:0;">合集名字</div>
+      <input class="field-input" id="mgTitle" value="${esc(keep.title || '')}" maxlength="60" placeholder="给合并后的合集起个名字">
+      <p class="field-help">合并后共 ${total} ${pair?'对':'张'}，按发布先后排。</p>
+
+      <div class="field-label">保留</div>
+      <p class="field-help" style="margin-top:2px;">「${esc(keep.title || '（没名字）')}」—— 发布时间和它的赞都留着。</p>
+
+      <div class="field-label">删除这 ${drop.length} 条</div>
+      <p class="field-help" style="margin-top:2px;">${drop.map(pt=>esc(pt.title || '（没名字）')).join('、')}</p>
+      <p class="field-help" style="color:#c0392b;">删掉之后找不回来${lostLikes ? `，它们身上的 ${lostLikes} 个赞也会一起没掉（没办法转移到保留的那条上）` : ''}。</p>
+    </div>
+    <div class="sheet-footer"><button class="btn-solid" id="mgOkBtn">确认合并</button></div>`;
+  $('confirmSheetMask').classList.add('open');
+  $('mgCloseBtn').addEventListener('click', ()=>$('confirmSheetMask').classList.remove('open'));
+  $('mgOkBtn').addEventListener('click', ()=>doMerge(sel, ($('mgTitle').value || '').trim()));
+}
+
+async function doMerge(sel, title){
+  const keep = sel[0], drop = sel.slice(1);
+  const images = sel.flatMap(pt=>avatarImages(pt)
+    .map(x => x.url2 ? { url:x.url, url2:x.url2 } : { url:x.url }));
+  if(!images.length){ showToast('这几条里一张图都没有'); return; }
+
+  const btn = $('mgOkBtn');
+  btn.disabled = true; btn.textContent = '合并中…';
+  // 先写合并后的那条，成了再删别的。反过来的话中间断网就是图全没了
+  const { error: uErr } = await sb.from('posts').update({
+    title: title || keep.title,
+    images,
+    url:  images[0].url,
+    url2: images[0].url2 || null,
+  }).eq('id', keep.id);
+  if(uErr){ btn.disabled = false; btn.textContent = '确认合并'; showToast('合并失败：'+uErr.message); return; }
+
+  const { error: dErr } = await sb.from('posts').delete().in('id', drop.map(pt=>pt.id));
+  $('confirmSheetMask').classList.remove('open');
+  if(dErr){
+    // 合并的那条已经写成了，只是旧的没删掉。照实说，别让人以为整件事失败了
+    showToast('已合并，但有几条旧的没删掉：'+dErr.message);
+  }else{
+    showToast(`已合并成 1 条，共 ${images.length} ${isPairCat(keep.category)?'对':'张'}`);
+  }
+  mergeMode = false; mergeSel.clear();
+  await loadPosts();
+  renderAll();
+}
+
 function renderMy(){
   renderProfileBits();
   const cnt = $('repoEntryCount');
@@ -5743,7 +5877,21 @@ function renderMy(){
     emptyText = '还没有点赞过任何内容';
     action = {label:'去首页看看', onClick:()=>showPage('home')};
   }
-  renderItemsGrid($('myGrid'), items, emptyText, action);
+  const box = $('myGrid');
+  // 合并模式下整片换成挑图的界面 —— 混在普通列表里做多选，
+  // 长按预览、点开详情那些手势会打架
+  if(mergeMode && myTab === 'works'){ renderMergePicker(box); return; }
+
+  renderItemsGrid(box, items, emptyText, action);
+
+  // 散着的头像够两条才给这个入口。只有一条没得合，摆个按钮只会让人纳闷
+  if(myTab === 'works' && myAvatarPosts().length >= 2){
+    const bar = document.createElement('div');
+    bar.className = 'btn-row';
+    bar.innerHTML = '<button class="btn-outline" id="mgEnter">合并头像</button>';
+    box.appendChild(bar);
+    $('mgEnter').addEventListener('click', ()=>{ mergeMode = true; mergeSel.clear(); renderMy(); });
+  }
 }
 
 /* ===================== detail overlay ===================== */
