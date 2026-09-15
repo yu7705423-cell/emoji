@@ -235,7 +235,20 @@
   /* 头像是"几张小图摆在正中"，不是整张铺满，得从上面那条绝对定位里摘出来。
      不摘的话：图被钉在封面左上角，情侣的两张还会整整齐齐叠在一起，
      看上去只有一张 —— 之前是圆的，圆饼叠圆饼谁也没看出来。 */
-  .post-cover-in img.post-av{position:relative; inset:auto; padding:0;}
+  /* 头像详情页：一整组摊开 */
+  .av-set{display:flex; flex-wrap:wrap; gap:12px; margin:10px 0 4px;}
+  .av-pair{display:flex; gap:6px; padding:6px; border:1px solid var(--border-soft); border-radius:var(--radius-m); background:var(--bg-elev);}
+  .av-pair.single{padding:0; border:none; background:none;}
+  .av-shot{text-align:center;}
+  .av-shot img{width:92px; height:92px; object-fit:cover; border-radius:var(--radius-s);
+               background:var(--bg); display:block; cursor:pointer;}
+  .av-shot .who{font-size:11px; color:var(--text-dim); margin-top:4px;}
+  @media (max-width:360px){ .av-shot img{width:80px; height:80px;} }
+
+  /* 头像合集的封面是一张四宫格拼图，要铺满整个方框。
+     .post-cover-in 自己带 14px 内边距，绝对定位才不会被它顶进去一圈 */
+  .post-cover-in .av-cover{position:absolute; inset:0;}
+  .post-cover-in .av-cover .coll-cover{position:absolute; inset:0; padding-top:0; border:none;}
   .post-kind-tag{position:absolute; left:6px; top:6px; font-size:9.5px; letter-spacing:.06em; background:var(--ink); color:var(--ink-contrast); border-radius:999px; padding:2px 7px;}
   /* 铃声试听 */
   .ring-row{display:flex; align-items:center; gap:11px; border:1px solid var(--border); border-radius:var(--radius-m); padding:11px 13px; margin-top:12px;}
@@ -1270,6 +1283,28 @@ let hasNeedsDescCol = false;
 // 数据库那边有 check 约束盯着，两边必须一致。
 const AVATAR_CATEGORIES = ['普通', '情侣'];
 const isPairCat = c => String(c||'') === '情侣';
+
+/* 头像是一组，不是一张。images 里存这一组的每一项：
+     [{url}, {url, url2}]        url2 只有情侣用得上（一对两张）
+   一张一条的时候首页刷两下全是头像，二十张韩系女头本来就是一组。
+
+   老帖子可能还没有 images，退回读 url / url2。数据库那边迁移跑过就走不到
+   这一支，但前端不该假设它一定跑过了 —— 假设错的代价是整页头像全空。 */
+function avatarImages(pt){
+  const out = asArray(pt && pt.images)
+    .map(x => ({ url:  String((x && x.url)  || '').trim(),
+                 url2: String((x && x.url2) || '').trim() }))
+    .filter(x => x.url);
+  if(out.length) return out;
+  const u = String((pt && pt.url) || '').trim();
+  return u ? [{ url: u, url2: String((pt && pt.url2) || '').trim() }] : [];
+}
+// 封面要的是一张张平铺的图，情侣的两张各算一张
+function avatarFlat(pt){
+  const flat = [];
+  avatarImages(pt).forEach(x=>{ flat.push({ url:x.url }); if(x.url2) flat.push({ url:x.url2 }); });
+  return flat;
+}
 const POST_KIND_LABEL = {};
 POST_KINDS.forEach(k=>{ POST_KIND_LABEL[k.id] = k.label; });
 // 头像框预览的默认底图，用户可以换成自己的头像
@@ -3091,17 +3126,10 @@ function postIconSvg(kind){
 // 不管哪种都套在同一个 padding-top:100% 的方框里，跟表情包/字体卡片同高。
 function postCoverHtml(pt){
   let inner;
-  if(pt.kind === 'avatar' && pt.url){
-    // 方形显示，圆角跟站里其它方缩略图一个值。
-    // 原来是圆的，理由是"圆形更接近戴上去的样子"，但整页看下来一堆圆饼很难看，
-    // 而且跟表情包/字体那些方卡片摆在一起格格不入。
-    // 情侣两张并排，一眼就知道这是一对，不用点进去才发现
-    const one = (u, size) => `<img class="post-av" src="${esc(u)}" loading="lazy" referrerpolicy="no-referrer"
-      onerror="this.style.opacity=0"
-      style="width:${size}px; height:${size}px; object-fit:cover; border-radius:var(--radius-s); background:var(--bg-elev);">`;
-    inner = (pt.url2 || '').trim()
-      ? `<div style="display:flex; gap:8px; align-items:center; justify-content:center;">${one(pt.url, 56)}${one(pt.url2.trim(), 56)}</div>`
-      : one(pt.url, 78);
+  if(pt.kind === 'avatar' && avatarFlat(pt).length){
+    // 一组头像的封面就是前四张拼起来，跟表情包合集长一个样 ——
+    // 它们现在本来就是同一种东西：一条帖子装一整组
+    inner = `<div class="av-cover">${coverHtml(avatarFlat(pt).slice(0,4), true)}</div>`;
   } else if(pt.kind === 'avatar_frame' && pt.url){
     inner = `<img src="${esc(pt.url)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">`;
   } else if(pt.kind === 'tutorial' && (pt.body||'').trim()){
@@ -3112,13 +3140,22 @@ function postCoverHtml(pt){
   return `<div class="post-cover"><div class="post-cover-in">${inner}</div>
     <span class="post-kind-tag">${esc(POST_KIND_LABEL[pt.kind]||'其他')}</span></div>`;
 }
+/* 卡片副标题里跟在作者后面那半句。
+   头像要写清楚这一组有几张 —— 一条帖子现在装的是一整组，
+   不写的话点进去之前根本不知道是一张还是二十张。
+   「情侣」也值得标出来（一眼知道是一对），「普通」两个字没信息量，写回类型名。 */
+function postKindSub(pt){
+  if(pt.kind !== 'avatar') return POST_KIND_LABEL[pt.kind] || '其他';
+  const n = avatarImages(pt).length;
+  const pair = isPairCat(pt.category);
+  if(!n) return pair ? '情侣' : '头像';
+  return (pair ? '情侣' : '头像') + ' · ' + n + (pair ? ' 对' : ' 张');
+}
 function postCardHtml(pt){
   return `<button class="coll-card" data-post-id="${esc(pt.id)}">
     ${postCoverHtml(pt)}
     <div class="coll-name">${esc(pt.title)}</div>
-    <div class="coll-sub">${authorLinkHtml(pt.user_id, pt.author_nickname)} · ${esc(
-      // 「情侣」值得标出来（一眼知道是一对），「普通」两个字没信息量，写回类型名
-      pt.kind==='avatar' && isPairCat(pt.category) ? '情侣' : (POST_KIND_LABEL[pt.kind]||'其他'))}</div>
+    <div class="coll-sub">${authorLinkHtml(pt.user_id, pt.author_nickname)} · ${esc(postKindSub(pt))}</div>
     <div class="coll-stats"><span>${heartIcon()}${pt.like_count||0}</span></div>
     ${tagRowHtml(pt.tags)}
   </button>`;
@@ -7105,23 +7142,24 @@ function renderPostDetail(justToggled){
       <div class="field-label">链接</div>
       <div class="key-row"><input class="field-input" id="ringUrlInput" readonly value="${esc(pt.url)}"><button class="icon-btn" id="ringCopyBtn" aria-label="复制">复制</button></div>`;
   } else if(pt.kind === 'avatar'){
-    const pair = (pt.url2 || '').trim();
-    const shot = (u, who) => `<div style="text-align:center;">
+    // 一整组摊开。链接不再一条一个输入框 —— 二十张就是二十个框，
+    // 谁也不会往下翻。改成点图就复制那一张的链接，底下再给一个复制全部
+    const list = avatarImages(pt);
+    const pair = isPairCat(pt.category);
+    const shot = (u, who) => `<div class="av-shot">
       <img src="${esc(u)}" alt="" referrerpolicy="no-referrer" onerror="this.style.opacity=.15"
-        style="width:${pair ? 128 : 172}px; height:${pair ? 128 : 172}px; object-fit:cover; border-radius:var(--radius-s); background:var(--bg-elev);">
-      ${who ? `<div style="font-size:12px; color:var(--text-dim); margin-top:6px;">${who}</div>` : ''}
+           data-av-copy="${esc(u)}">
+      ${who ? `<div class="who">${who}</div>` : ''}
     </div>`;
-    const urlRow = (label, u, id) => `<div class="field-label">${label}</div>
-      <div class="key-row"><input class="field-input" id="${id}" readonly value="${esc(u)}"><button class="icon-btn" data-copy-input="${id}" aria-label="复制">复制</button></div>`;
+    const cell = it => pair && it.url2
+      ? `<div class="av-pair">${shot(it.url, '左')}${shot(it.url2, '右')}</div>`
+      : `<div class="av-pair single">${shot(it.url, '')}</div>`;
     bodyHtml = `
-      <div style="display:flex; gap:18px; justify-content:center; flex-wrap:wrap; margin:6px 0 4px;">
-        ${shot(pt.url, pair ? '左' : '')}
-        ${pair ? shot(pair, '右') : ''}
-      </div>
-      ${pair ? '<p class="field-help" style="text-align:center;">情侣头像，一对两张</p>' : ''}
-      ${urlRow(pair ? '第一张（左）链接' : '图片链接', pt.url, 'avUrl1')}
-      ${pair ? urlRow('第二张（右）链接', pair, 'avUrl2') : ''}
-      <p class="field-help">长按图片可以直接保存。${pair ? '情头记得两张都存，别只存一张。' : ''}</p>`;
+      <p class="field-help" style="margin-top:2px;">
+        这一组共 ${list.length} ${pair ? '对' : '张'}${pair ? '，每一对左右各一张' : ''}。
+        点一下图片复制它的链接，长按可以直接保存。</p>
+      <div class="av-set">${list.map(cell).join('')}</div>
+      <div class="btn-row"><button class="btn-outline" id="avCopyAll">复制全部链接</button></div>`;
   } else if(pt.kind === 'avatar_frame'){
     bodyHtml = `
       ${avatarFrameUiHtml('af')}
@@ -7156,7 +7194,11 @@ function renderPostDetail(justToggled){
   $('postLikeBtn').addEventListener('click', async ()=>{ await toggleLikeRemote(pt.id, 'post'); renderPostDetail('like'); renderAll(); });
   $('postFavBtn').addEventListener('click', async ()=>{ await toggleFavoriteRemote(pt.id, 'post'); renderPostDetail('fav'); renderAll(); });
   if(isOwner){
-    $('postEditBtn').addEventListener('click', ()=>openPostEditor(pt.kind, pt));
+    $('postEditBtn').addEventListener('click', ()=>{
+      // 头像是一整组，得用发合集那个编辑器改；单条编辑器只认一张图
+      const cfg = BATCH_KINDS[pt.kind];
+      if(cfg && cfg.collect) openPostBatch(pt.kind, pt); else openPostEditor(pt.kind, pt);
+    });
     $('postDeleteBtn').addEventListener('click', ()=>{
       openConfirmSheet('删除这条内容？', '删除之后无法恢复。', '删除', async ()=>{
         const { error } = await sb.from('posts').delete().eq('id', pt.id);
@@ -7179,6 +7221,20 @@ function renderPostDetail(justToggled){
       try{ await navigator.clipboard.writeText(el.value); showToast('已复制'); }catch(e){ showToast('复制失败'); }
     });
   });
+  // 头像合集：点哪张复制哪张，底下一个复制全部
+  $('postDetailBody').querySelectorAll('[data-av-copy]').forEach(im=>{
+    im.addEventListener('click', ()=> copyText(im.dataset.avCopy, '这张的链接已复制'));
+  });
+  const avAll = $('avCopyAll');
+  if(avAll) avAll.addEventListener('click', ()=>{
+    const list = avatarImages(pt);
+    // 情侣按「左 换行 右 空行」分组，粘出去一眼看得出哪两张是一对
+    const text = isPairCat(pt.category)
+      ? list.map(x=>[x.url, x.url2].filter(Boolean).join('\n')).join('\n\n')
+      : list.map(x=>x.url).join('\n');
+    copyText(text, `${list.length} ${isPairCat(pt.category)?'对':'张'}的链接已复制`);
+  });
+
   if(pt.kind === 'ringtone') setupRingtone();
   if(pt.kind === 'avatar_frame') setupAvatarFrame(pt.url, pt.title, 'af');
   mountComments('post', pt.id, pt.user_id);
@@ -7494,10 +7550,13 @@ const BATCH_KINDS = {
                   preview:'contain',
                   urlHint:'https://…  头像框图片链接',
                   help:'选图会自动压缩并转成链接，可以一次选多张，每张自动占一行，名字再补上就行。透明底的 PNG 效果最好。' },
+  // collect：这一批不是"发好几条"，而是"发一条，里面装好几张"。
+  // 一张头像一条帖子的话，首页刷两下全是头像 —— 二十张韩系女头本来就是一组
   avatar:       { label:'头像',   table:'posts', pick:true,  perms:true,  cats:AVATAR_CATEGORIES,
-                  preview:'cover',
+                  preview:'cover', collect:true,
                   urlHint:'https://…  头像图片链接',
-                  help:'选图可以一次选很多张。选「情侣」的时候相邻两张自动配成一对，左边那张排前面；' +
+                  help:'选图可以一次选很多张，它们会合成一个合集，只占首页一条。' +
+                       '选「情侣」的时候相邻两张自动配成一对，左边那张排前面；' +
                        '中途换分类不用重来，已经填进去的图会按新分类重新分组。' },
   font:         { label:'字体',   table:'fonts', pick:false, perms:false, cats:FONT_CATEGORIES,
                   urlHint:'https://…  ttf / otf / woff2 直链',
@@ -7527,15 +7586,32 @@ function regroupAvatarRows(st, toPair){
   st.rows = out;
 }
 let batchPost = null;
+let editingSet = null;      // 正在改的那个合集。null 就是新发
 
-function openPostBatch(kind){
+/* existing 给了就是"改一个已有合集"：把它整组铺回列表里。
+   头像改成合集之后，改一条头像等于改一整组，单条编辑器那套（一个链接框）
+   根本装不下，所以编辑也走这儿。 */
+function openPostBatch(kind, existing){
+  const cfg = BATCH_KINDS[kind];
+  editingSet = (existing && cfg && cfg.collect) ? existing : null;
+  const rows = editingSet
+    ? avatarImages(editingSet).map(x=>({ id: uid(), title: '', url: x.url, url2: x.url2 || '' }))
+    : [];
   batchPost = {
     kind,
-    rows: [{ id: uid(), title: '', url: '', url2: '' }],
+    rows: rows.length ? rows : [{ id: uid(), title: '', url: '', url2: '' }],
     pasteOpen: false, pasteText: '',
-    category: (BATCH_KINDS[kind].cats || [null])[0],
-    tags: [], tagInput: '', credit: '',
-    allowRepost: false, allowEdit: false, otherChecked: false, otherText: '',
+    setTitle: editingSet ? String(editingSet.title || '') : '',   // 合集标题。只有 collect 那种用得上
+    category: editingSet
+      ? (editingSet.category || (cfg.cats || [null])[0])
+      : (cfg.cats || [null])[0],
+    tags: editingSet ? asArray(editingSet.tags).slice() : [],
+    tagInput: '',
+    credit: editingSet ? String(editingSet.credit || '') : '',
+    allowRepost:  editingSet ? !!editingSet.allow_repost : false,
+    allowEdit:    editingSet ? !!editingSet.allow_edit   : false,
+    otherChecked: !!(editingSet && String(editingSet.other_permission || '').trim()),
+    otherText:    editingSet ? String(editingSet.other_permission || '') : '',
   };
   $('postEditorOverlay').classList.add('open');
   drawPostBatch();
@@ -7556,6 +7632,7 @@ function syncPostBatch(){
   const ti = $('bpTagInput'); if(ti) st.tagInput = ti.value;
   const ot = $('bpOther');    if(ot) st.otherText = ot.value;
   const cr = $('bpCredit');   if(cr) st.credit = cr.value;
+  const sT = $('bpSetTitle');  if(sT) st.setTitle = sT.value;
   const pt = $('bpPaste');    if(pt) st.pasteText = pt.value;
 }
 
@@ -7580,15 +7657,24 @@ function drawPostBatch(){
     style="width:52px; height:52px; object-fit:${cfg.preview}; background:var(--bg-elev); border-radius:var(--radius-s);">`;
   const suggestions = getAllKnownTags().filter(t=>!st.tags.includes(t)).slice(0, 20);
 
-  $('postEditorTitle').textContent = `发布${cfg.label}`;
+  $('postEditorTitle').textContent = (editingSet ? '编辑' : '发布') + cfg.label;
   $('postEditorBody').innerHTML = `
-    <p class="hint" style="margin-top:0;">可以一次发好几条${cfg.perms ? '，下面的标签和使用权限对这一批<b>全部生效</b>，不用一条条填' : ''}${cfg.cats ? '，下面的分类这一批<b>共用一个</b>' : ''}。</p>
+    <p class="hint" style="margin-top:0;">${cfg.collect
+      ? `下面这些图会合成<b>一个合集</b>，在首页只占一条。标签、使用权限和分类整组共用。`
+      : `可以一次发好几条${cfg.perms ? '，下面的标签和使用权限对这一批<b>全部生效</b>，不用一条条填' : ''}${cfg.cats ? '，下面的分类这一批<b>共用一个</b>' : ''}。`}</p>
+
+    ${cfg.collect ? `
+    <div class="field-label" style="margin-top:14px;">合集名字</div>
+    <input class="field-input" id="bpSetTitle" placeholder="例如：韩系女头一组" value="${esc(st.setTitle)}" maxlength="60">
+    ` : ''}
 
     <div class="row-list" id="bpRows">
       ${st.rows.map((r, i)=>`
         <div class="row-item">
           <div class="row-main">
-            <input class="desc" data-bp-title="${r.id}" placeholder="第 ${i+1} ${pair?'对':'条'}的名字" value="${esc(r.title)}" maxlength="60">
+            ${cfg.collect
+              ? `<div class="desc" style="color:var(--text-faint); font-size:12px;">第 ${i+1} ${pair?'对':'张'}</div>`
+              : `<input class="desc" data-bp-title="${r.id}" placeholder="第 ${i+1} ${pair?'对':'条'}的名字" value="${esc(r.title)}" maxlength="60">`}
             <input class="url" data-bp-url="${r.id}"
               placeholder="${pair ? '左边那张' : esc(cfg.urlHint)}" value="${esc(r.url)}">
             ${pair ? `<input class="url" data-bp-url2="${r.id}" style="margin-top:6px;"
@@ -7643,7 +7729,7 @@ function drawPostBatch(){
     <p class="field-help">出处不同的图分几批发。单独某一条要写别的，发完点进那一条再改。</p>
     ` : ''}
 
-    <div class="btn-row" style="margin-top:18px;"><button class="btn-solid" id="bpSubmit">确认发布</button></div>
+    <div class="btn-row" style="margin-top:18px;"><button class="btn-solid" id="bpSubmit">${editingSet ? '确认保存' : '确认发布'}</button></div>
     <div style="height:24px;"></div>`;
 
   $('bpAdd').addEventListener('click', ()=>{
@@ -7759,12 +7845,40 @@ async function submitPostBatch(){
   // 完全空的行直接忽略：多点了一下「添加一条」不该变成报错
   const rows = st.rows.filter(r=>r.title.trim() || r.url.trim() || (r.url2||'').trim());
   if(!rows.length){ showToast('还没有填任何一条'); return; }
-  const bad = rows.findIndex(r=>!r.title.trim() || !r.url.trim() || (pair && !(r.url2||'').trim()));
-  if(bad >= 0){
-    showToast(pair ? `第 ${bad+1} 对要填名字和两张图` : `第 ${bad+1} 条的名字和链接都要填`);
-    return;
+
+  if(cfg.collect){
+    // 合集：整组一个名字，每一行只要图
+    if(!st.setTitle.trim()){ showToast('给这个合集起个名字'); return; }
+    const miss = rows.findIndex(r=>!r.url.trim() || (pair && !(r.url2||'').trim()));
+    if(miss >= 0){ showToast(pair ? `第 ${miss+1} 对还缺一张图` : `第 ${miss+1} 张的链接还没填`); return; }
+  }else{
+    const bad = rows.findIndex(r=>!r.title.trim() || !r.url.trim() || (pair && !(r.url2||'').trim()));
+    if(bad >= 0){
+      showToast(pair ? `第 ${bad+1} 对要填名字和两张图` : `第 ${bad+1} 条的名字和链接都要填`);
+      return;
+    }
   }
-  const payload = cfg.table === 'fonts'
+  // 合集模式：一整组进一条帖子。url / url2 留着放第一项 ——
+  // 卡片封面、分享卡、MCP 都还从那儿读，老代码一处都不用改
+  const payload = cfg.collect
+    ? [{
+        kind: st.kind,
+        title: st.setTitle.trim(),
+        images: rows.map(r=> pair
+          ? { url: r.url.trim(), url2: r.url2.trim() }
+          : { url: r.url.trim() }),
+        url:  rows[0].url.trim(),
+        url2: pair ? rows[0].url2.trim() : null,
+        category: st.kind === 'avatar' ? st.category : null,
+        body: '', link: '',
+        credit: st.credit.trim(),
+        tags: st.tags.slice(),
+        allow_repost: st.allowRepost,
+        allow_edit: st.allowEdit,
+        other_permission: st.otherChecked ? st.otherText.trim() : '',
+        user_id: currentUserId, author_nickname: currentUser, author_avatar_url: avatarDataUrl || null,
+      }]
+    : cfg.table === 'fonts'
     // 卡片的样式这里一律用新建字体时的那套默认值 —— 跟单条编辑器保持一致，
     // 导进来之后点开某个字体还能单独调
     ? rows.map(r=>({
@@ -7791,14 +7905,28 @@ async function submitPostBatch(){
       }));
 
   const btn = $('bpSubmit');
-  btn.disabled = true; btn.textContent = '发布中…';
-  const { error } = await sb.from(cfg.table).insert(payload);
-  btn.disabled = false; btn.textContent = '确认发布';
-  if(error){ showToast('发布失败：'+error.message); return; }
+  btn.disabled = true; btn.textContent = editingSet ? '保存中…' : '发布中…';
+  let error;
+  if(editingSet){
+    // 改一个已有合集：只动内容，作者和发布时间原样不动
+    const row = Object.assign({}, payload[0]);
+    delete row.user_id; delete row.author_nickname; delete row.author_avatar_url;
+    ({ error } = await sb.from('posts').update(row).eq('id', editingSet.id));
+  }else{
+    ({ error } = await sb.from(cfg.table).insert(payload));
+  }
+  btn.disabled = false; btn.textContent = editingSet ? '确认保存' : '确认发布';
+  if(error){ showToast((editingSet ? '保存' : '发布') + '失败：' + error.message); return; }
 
+  // 先把"是不是在改"记下来 —— 下面一行就把 editingSet 清了，
+  // 清完再判断的话提示永远是「已发布」
+  const wasEditing = !!editingSet;
   $('postEditorOverlay').classList.remove('open');
-  batchPost = null;
-  showToast(`已发布 ${payload.length} ${pair ? '对' : '条'}`);
+  $('postDetailOverlay').classList.remove('open');
+  batchPost = null; editingSet = null;
+  showToast(wasEditing ? '已保存修改'
+    : cfg.collect ? `已发布，共 ${rows.length} ${pair ? '对' : '张'}`
+    : `已发布 ${payload.length} ${pair ? '对' : '条'}`);
   if(cfg.table === 'fonts') await loadFonts(); else await loadPosts();
   renderAll(); showPage('my');
 }
@@ -7870,35 +7998,9 @@ function openPostEditor(kind, existing){
       fields = `<div class="field-label">音频链接</div>
         <input class="field-input" id="peUrl" placeholder="https://…  mp3 / m4a 等直链" value="${esc(st.url)}">
         <p class="field-help">贴直链，不要贴网盘或播放页地址，否则试听放不出来。</p>`;
-    } else if(st.kind === 'avatar'){
-      const pair = isPairCat(st.category);
-      const cell = (u, who) => `<div style="text-align:center;">
-        ${u.trim()
-          ? `<img src="${esc(u.trim())}" alt="" referrerpolicy="no-referrer" onerror="this.style.opacity=.15"
-               style="width:64px; height:64px; object-fit:cover; border-radius:var(--radius-s); background:var(--bg-elev);">`
-          : `<div style="width:64px; height:64px; border-radius:var(--radius-s); background:var(--bg-elev); border:1px dashed var(--border);"></div>`}
-        ${who ? `<div style="font-size:11px; color:var(--text-dim); margin-top:4px;">${who}</div>` : ''}
-      </div>`;
-      fields = `<div class="field-label">分类</div>
-        <div class="chip-row" id="peCatRow">
-          ${AVATAR_CATEGORIES.map(c=>`<button type="button" class="chip${st.category===c?' active':''}" data-pe-cat="${esc(c)}">${esc(c)}</button>`).join('')}
-        </div>
-        <p class="field-help">性别、性向、风格这些用下面的标签写，搜得到。</p>
-
-        <div class="field-label">${pair ? '第一张（左）' : '头像图片链接'}</div>
-        <input class="field-input" id="peUrl" placeholder="https://…  方形图效果最好" value="${esc(st.url)}">
-        ${pair ? `<div class="field-label">第二张（右）</div>
-          <input class="field-input" id="peUrl2" placeholder="https://…  情侣的另一半" value="${esc(st.url2)}">` : ''}
-        <div class="btn-row" style="margin-top:10px;">
-          <button type="button" class="btn-outline" id="pePickBtn"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 16l-5-5-4 4-2-2-4 4"/></svg>${pair ? '选两张图上传' : '选图上传'}</button>
-        </div>
-        <div style="display:flex; gap:14px; align-items:flex-start; margin-top:12px;">
-          ${cell(st.url, pair ? '左' : '')}
-          ${pair ? cell(st.url2, '右') : ''}
-        </div>
-        <p class="field-help">${pair
-          ? '一对发成一条，选图可以一次选两张，自动填进左右。'
-          : '方形图效果最好，会自动压缩转成链接。'}</p>`;
+    // 头像那一支删了：头像改成合集之后，发布和编辑都走 openPostBatch，
+    // 这个单条编辑器（一个链接框）已经没有任何入口能进来。
+    // 留着的话，下次改头像很容易改到这段死代码上，改完还纳闷为什么没生效。
     } else if(st.kind === 'avatar_frame'){
       fields = `<div class="field-label">头像框图片链接</div>
         <input class="field-input" id="peUrl" placeholder="https://…  建议透明底 PNG" value="${esc(st.url)}">
@@ -8055,6 +8157,8 @@ $('postEditorBackBtn').addEventListener('click', ()=>{
   $('postEditorOverlay').classList.remove('open');
   editingPost = null;
   batchPost = null;
+  // 不清的话，改完一个合集按返回，下次点「发布头像」还以为在改那一条
+  editingSet = null;
 });
 
 /* ===================== fonts section ===================== */
