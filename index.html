@@ -873,6 +873,13 @@
     </div>
   </div>
 
+  <!-- 改版提示：底部少了两个 tab，老用户会先找不到东西。只提一次。 -->
+  <div class="clip-bar" id="movedBar">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg>
+    <div class="t">位置挪了一下<span>「收藏」在「我的」里面，「许愿」在首页顶上。底部只剩四个。</span></div>
+    <button id="movedBarOk">知道了</button>
+  </div>
+
   <!-- 从剪贴板打开分享链接：群里复制了链接回来时问一句 -->
   <div class="clip-bar" id="clipBar">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/></svg>
@@ -1285,8 +1292,12 @@ const $ = id => document.getElementById(id);
 (function(){
   const KEY = 'zhp_disclaimer_ack_v1';
   const overlay = document.getElementById('disclaimerOverlay');
+  // 这个人以前来过没有。必须在这里读 —— 下面那个按钮一点就把它写成 1，
+  // 之后再读就分不出新老用户了。改版提示只给老用户看：
+  // 新人没见过旧版，跟他说「收藏挪走了」毫无意义
+  window.__returningUser = false;
   try{
-    if(localStorage.getItem(KEY) === '1'){ overlay.style.display = 'none'; }
+    if(localStorage.getItem(KEY) === '1'){ overlay.style.display = 'none'; window.__returningUser = true; }
   }catch(e){ /* 存不了就每次都提示一遍，总比整个页面打不开强 */ }
   document.getElementById('disclaimerAckBtn').addEventListener('click', ()=>{
     try{ localStorage.setItem(KEY, '1'); }catch(e){}
@@ -1406,9 +1417,12 @@ async function initAuth(){
     if(window.requestIdleCallback) requestIdleCallback(later, { timeout: 8000 });
     else setTimeout(later, 3000);
 
+    // 改版提示排在剪贴板那条前面：位置找不到比剪贴板里有个链接更要紧
+    setTimeout(maybeShowMovedBar, 600);
+
     // 从群里复制完链接切回来，正是这一刻。开屏也看一眼 ——
     // 有人是先复制再点开 app 的
-    setTimeout(()=>clipCheckOnFocus().catch(()=>{}), 900);
+    setTimeout(()=>clipCheckOnFocus().catch(()=>{}), 1800);
     document.addEventListener('visibilitychange', ()=>{
       if(document.visibilityState === 'visible') clipCheckOnFocus().catch(()=>{});
     });
@@ -8564,7 +8578,30 @@ async function clipCheckOnFocus(){
     return;
   }
   if(clipAsked() || clipBarShown) return;
+  if(movedBarOpen()) return;   // 两条用的是同一个位置，别叠在一起
   showClipBar();
+}
+
+/* ===================== 改版提示 =====================
+   底部从六个 tab 砍到四个，收藏和许愿各自挪了地方。老用户打开会先愣一下，
+   所以提一次，点掉就再也不提。
+
+   两条限制：
+   · 只给老用户。新人没见过旧版，跟他说「收藏挪走了」只会让他更糊涂。
+   · 跟剪贴板那条互斥 —— 两条用的是同一个位置，一起冒出来会叠在一起。 */
+const MOVED_KEY = 'zhp_moved_notice_v1';
+function movedAsked(){ try{ return localStorage.getItem(MOVED_KEY) === '1'; }catch(e){ return true; } }
+function movedBarOpen(){ const b = $('movedBar'); return !!(b && b.classList.contains('show')); }
+
+function maybeShowMovedBar(){
+  if(!window.__returningUser || movedAsked()) return;
+  if($('joinOverlay').classList.contains('open')) return;   // 还没登录就别凑热闹
+  const bar = $('movedBar'); if(!bar) return;
+  bar.classList.add('show');
+  $('movedBarOk').onclick = ()=>{
+    bar.classList.remove('show');
+    try{ localStorage.setItem(MOVED_KEY, '1'); }catch(e){}
+  };
 }
 
 /* ===================== 选图上传 =====================
