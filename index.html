@@ -1452,6 +1452,31 @@ let userStats = new Map(); // userId -> {nickname, avatarUrl, worksCount, totalL
 /* ===================== auth / boot ===================== */
 const AUTH_EMAIL_SUFFIX = '@zahuopu.invalid';
 function usernameToEmail(u){ return u.trim().toLowerCase()+AUTH_EMAIL_SUFFIX; }
+// 从聊天软件里复制来的密码，十有八九带着尾随空格或换行，有的还带零宽字符。
+// 粘进输入框肉眼看不出区别，bcrypt 一比就是不匹配 —— 管理员重置密码之后
+// 「我明明发对了，他却说密码错」多半就是这么来的
+function cleanPw(s){
+  return String(s == null ? '' : s)
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '')   // 零宽字符，纯噪音
+    .replace(/\u00A0/g, ' ')                          // 不换行空格，从网页复制时常见
+    .trim();
+}
+// 登录失败的原因不止"密码错"。以前一律报「账号或密码不对」，于是邮箱没验证、
+// 被限流这些全被盖住，人只会抱着正确的密码一遍遍重试。
+// 凭据这一档仍然不说是账号错还是密码错 —— 那是防账号探测的，不能拆开
+function authErrText(err){
+  const m = String((err && err.message) || '');
+  const code = String((err && (err.code || err.error_code)) || '');
+  if(/email.*not.*confirmed/i.test(m) || /email_not_confirmed/i.test(code))
+    return '这个账号的邮箱还没验证，登录被挡住了 —— 跟密码无关';
+  if(/rate limit|too many|429/i.test(m) || /rate_limit/i.test(code))
+    return '刚才试得太频繁，被临时限流了。等几分钟再试 —— 跟密码对不对无关';
+  if(/invalid login credentials|invalid_credentials/i.test(m + code))
+    return '账号或密码不对';
+  if(/failed to fetch|networkerror|network request failed/i.test(m))
+    return '连不上服务器，检查一下网络再试';
+  return '登录失败：' + (m || '未知错误');
+}
 function showJoinError(msg){ const el=$('joinError'); el.textContent=msg; el.style.display='block'; showToast(msg); }
 
 async function initAuth(){
@@ -1521,13 +1546,22 @@ document.querySelectorAll('#authModeChips .chip').forEach(b=>{
 
 $('loginSubmitBtn').addEventListener('click', async ()=>{
   const username = $('loginUsernameInput').value.trim();
-  const password = $('loginPasswordInput').value;
+  const raw = $('loginPasswordInput').value;
   $('joinError').style.display = 'none';
-  if(!username || !password){ showJoinError('请输入账号和密码'); return; }
+  if(!username || !raw){ showJoinError('请输入账号和密码'); return; }
   $('loginSubmitBtn').disabled = true; $('loginSubmitBtn').textContent = '登录中…';
   try{
-    const { error } = await sb.auth.signInWithPassword({ email: usernameToEmail(username), password });
-    if(error) throw new Error('账号或密码不对');
+    const email = usernameToEmail(username);
+    // 先按原样试。注册那边从来没裁过密码，老账号的密码本身就可能带空格，
+    // 上来就裁会把这些人锁在门外
+    let { error } = await sb.auth.signInWithPassword({ email, password: raw });
+    const tidy = cleanPw(raw);
+    // 原样不行、而且清理之后确实不一样，才补这一次。
+    // 普通打错密码不会多花一次请求 —— 免得把失败次数翻倍，撞上 GoTrue 的登录限流
+    if(error && tidy && tidy !== raw){
+      ({ error } = await sb.auth.signInWithPassword({ email, password: tidy }));
+    }
+    if(error) throw new Error(authErrText(error));
     $('joinOverlay').classList.remove('open');
     $('loadingOverlay').style.display = 'flex';
     await initAuth();
