@@ -484,6 +484,15 @@
   .tab-btn span{font-size:10px; font-weight:600;}
   .tab-btn.active{color:var(--text);}
 
+  /* 分类页第一层那四张大卡片 */
+  .zone-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:4px;}
+  .zone-card{display:block; width:100%; text-align:left; padding:0; border:1px solid var(--border-soft);
+             border-radius:var(--radius-m); background:var(--bg-elev); cursor:pointer; overflow:hidden;}
+  .zone-card .zone-cover{width:100%; padding-top:62%; position:relative; overflow:hidden; background:var(--border-soft);}
+  .zone-card .zone-cover .coll-cover{position:absolute; inset:0; padding-top:0; border:none;}
+  .zone-card .zone-meta{padding:10px 12px 12px;}
+  .zone-card .zone-name{font-size:15px; font-weight:700; color:var(--text);}
+  .zone-card .zone-sub{font-size:12px; color:var(--text-dim); margin-top:2px;}
   .cat-sticky{position:sticky; top:0; z-index:5; background:var(--bg); margin:0 -18px; padding:10px 18px 8px; border-bottom:1px solid var(--border-soft);}
 
   .type-toggle{display:flex; border:1px solid var(--border); border-radius:999px; padding:3px; gap:3px;}
@@ -493,6 +502,18 @@
      分给切换条只剩 150px，四个三字标签会各自折成三行。窄屏收一下字号让它回到一行。 */
   @media (max-width:340px){ .type-toggle button{font-size:11px; padding:8px 0;} }
   .toggle-search-row{display:flex; align-items:center; gap:10px; margin-top:14px;}
+  /* 排序从一排胶囊改成小标题那一行右边的文字。首页顶上原来三排控件叠着，
+     这是省掉的第三排 —— 排序本来就是"看这一列"的附属选项，不该跟内容切换
+     长得一样重 */
+  .sect-row{display:flex; align-items:center; justify-content:space-between; margin:20px 0 10px;}
+  .sect-row .section-title{margin:0;}
+  .sort-text{display:flex; gap:14px; flex-shrink:0;}
+  .sort-text button{border:none; background:none; padding:2px 0; font-size:12px; font-weight:600;
+                    color:var(--text-faint); cursor:pointer; border-bottom:1.5px solid transparent;}
+  .sort-text button.active{color:var(--text); border-bottom-color:var(--ink);}
+  /* 首页是混着排的：字体卡在字体专区里是 110px 高的圆角卡，跟表情包的正方形
+     封面摆一起会矮一截、下面空一块。首页里改成同样的正方形、同样的直角。 */
+  .coll-grid.mixed .font-card-canvas.mini{height:auto; aspect-ratio:1/1; border-radius:0;}
   .toggle-search-row .type-toggle{flex:1;}
   #homeRefreshBtn.spinning svg{animation:spin .7s linear infinite;}
 
@@ -661,12 +682,12 @@
         </div>
         <button class="avatar-btn" id="homeAvatarBtn" aria-label="更换头像"><span class="ph" id="homeAvatarPh">+</span><img id="homeAvatarImg" style="display:none;"></button>
       </div>
+      <!-- 第一页分两屏：首页和许愿。许愿原来是底部第五个 tab，
+           底部只留四个之后就挪到这儿来了 -->
       <div class="toggle-search-row">
-        <div class="type-toggle" id="homeTypeToggle">
-          <button class="active" data-type="collections">表情包</button>
-          <button data-type="fonts">字体</button>
-          <button data-type="posts">其他</button>
-          <button data-type="wanted">待描述</button>
+        <div class="type-toggle" id="homeSceneToggle">
+          <button class="active" data-scene="main">首页</button>
+          <button data-scene="wish">许愿</button>
         </div>
         <button class="icon-btn" id="homeRefreshBtn" aria-label="刷新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v6h-6"/></svg></button>
         <button class="icon-btn" id="notifBtn" aria-label="通知" style="position:relative;">
@@ -674,40 +695,63 @@
           <span id="notifBadge" style="display:none; position:absolute; top:5px; right:5px; min-width:14px; height:14px; padding:0 3px; border-radius:999px; background:#E0453C; color:#fff; font-size:9px; font-weight:700; line-height:14px; text-align:center;"></span>
         </button>
         <button class="icon-btn" id="homeSearchBtn" aria-label="搜索"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></button>
+        <button class="icon-btn" id="wishNewBtn" aria-label="发起许愿" style="display:none;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>
       </div>
-      <div id="homeSearchWrap" style="display:none; margin-top:10px;">
-        <input class="field-input" id="homeSearch" placeholder="搜索作品、作者，或粘贴一条分享链接">
+
+      <!-- 首页不再按类型分了：分类有自己的 tab，还有专区，首页再放一遍是重复的。
+           这里就是全站混在一起的一条流，表情包、字体、其他、待描述都在。 -->
+      <div id="homePaneMain">
+        <div id="homeSearchWrap" style="display:none; margin-top:10px;">
+          <input class="field-input" id="homeSearch" placeholder="搜索作品、作者，或粘贴一条分享链接">
+        </div>
+        <div class="sect-row">
+          <div class="section-title" id="homeSectionTitle">作品</div>
+          <div class="sort-text" id="homeSortRow">
+            <button class="active" data-sort="new">最新</button>
+            <button data-sort="hot">热门</button>
+          </div>
+        </div>
+        <div id="homeGrid"></div>
       </div>
-      <div class="chip-row" id="homeSortRow" style="margin-top:10px;">
-        <button class="chip active" data-sort="new">最新</button>
-        <button class="chip" data-sort="hot">热门</button>
+
+      <div id="homePaneWish" style="display:none;">
+        <p class="hint" style="margin-top:12px;">想要什么没找到、有什么问题想问，都发在这里。别人可以直接带着作品来回你。</p>
+        <div class="chip-row" id="wishSortRow">
+          <button class="chip active" data-wsort="new">最新</button>
+          <button class="chip" data-wsort="want">最多人想要</button>
+          <button class="chip" data-wsort="open">求助中</button>
+          <button class="chip" data-wsort="mine">我发的</button>
+        </div>
+        <div id="wishList" style="margin-top:14px;"></div>
       </div>
-      <div class="section-title" id="homeSectionTitle">作品</div>
-      <div id="homeGrid"></div>
     </div>
 
-    <!-- CATEGORY -->
+    <!-- CATEGORY：两层。第一层是四张大类卡片，点进去才是那一类的专区。
+         原来是顶上一排切换 + 一排分类 + 作品，三样东西同时摆在眼前，
+         进来第一眼不知道该先看哪儿 -->
     <div class="page" id="page-category">
-      <div class="toggle-search-row" style="margin-top:2px;">
-        <div class="type-toggle" id="catTypeToggle">
-          <button class="active" data-type="collections">表情包</button>
-          <button data-type="fonts">字体</button>
-          <button data-type="posts">其他</button>
-          <button data-type="wanted">待描述</button>
+      <div id="catZoneCards">
+        <div class="section-title" style="margin-top:2px;">分类</div>
+        <div class="zone-grid" id="catZoneGrid"></div>
+      </div>
+
+      <div id="catZoneView" style="display:none;">
+        <div class="toggle-search-row" style="margin-top:2px;">
+          <button class="icon-btn" id="catBackBtn" aria-label="返回"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <div class="section-title" id="catZoneTitle" style="margin:0; flex:1;"></div>
+          <button class="icon-btn" id="catSearchBtn" aria-label="搜索"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></button>
         </div>
-        <button class="icon-btn" id="catSearchBtn" aria-label="搜索"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></button>
+        <div id="catSearchWrap" style="display:none; margin-top:10px;">
+          <input class="field-input" id="catSearch" placeholder="搜索作品 / 描述 / 作者昵称">
+        </div>
+        <div class="cat-sticky">
+          <div class="chip-row" id="catChipRow"></div>
+          <!-- 头像的小分类。只在「其他 → 头像」下面出现 -->
+          <div class="chip-row" id="catSubChipRow" style="display:none;"></div>
+        </div>
+        <div class="section-title">作品</div>
+        <div id="catGrid"></div>
       </div>
-      <div id="catSearchWrap" style="display:none; margin-top:10px;">
-        <input class="field-input" id="catSearch" placeholder="搜索作品 / 描述 / 作者昵称">
-      </div>
-      <div class="cat-sticky">
-        <div class="section-title" style="margin-top:0;">分类</div>
-        <div class="chip-row" id="catChipRow"></div>
-        <!-- 头像的五个小分类。只在「其他 → 头像」下面出现 -->
-        <div class="chip-row" id="catSubChipRow" style="display:none;"></div>
-      </div>
-      <div class="section-title">作品</div>
-      <div id="catGrid"></div>
     </div>
 
     <!-- PUBLISH -->
@@ -789,28 +833,6 @@
     </div>
 
     <!-- FAVORITES -->
-    <div class="page" id="page-favorites">
-      <div class="section-title" style="margin-top:0;">收藏</div>
-      <div id="favGrid"></div>
-    </div>
-
-    <!-- WISH BOARD 许愿 -->
-    <div class="page" id="page-wish">
-      <div class="toggle-search-row" style="margin-top:2px;">
-        <div class="section-title" style="margin:0; flex:1;">许愿</div>
-        <button class="icon-btn" id="wishRefreshBtn" aria-label="刷新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v6h-6"/></svg></button>
-        <button class="icon-btn" id="wishNewBtn" aria-label="发起许愿"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>
-      </div>
-      <p class="hint" style="margin-top:8px;">想要什么没找到、有什么问题想问，都发在这里。别人可以直接带着作品来回你。</p>
-      <div class="chip-row" id="wishSortRow">
-        <button class="chip active" data-wsort="new">最新</button>
-        <button class="chip" data-wsort="want">最多人想要</button>
-        <button class="chip" data-wsort="open">求助中</button>
-        <button class="chip" data-wsort="mine">我发的</button>
-      </div>
-      <div id="wishList" style="margin-top:14px;"></div>
-    </div>
-
     <!-- MY (Instagram-style profile) -->
     <div class="page" id="page-my">
       <div class="ig-head">
@@ -872,14 +894,6 @@
     <button class="tab-btn" data-page="publish">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M12 8v8M8 12h8"/></svg>
       <span>发布</span>
-    </button>
-    <button class="tab-btn" data-page="favorites">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-      <span>收藏</span>
-    </button>
-    <button class="tab-btn" data-page="wish">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.4 5.4 5.6.6-4.2 4 1.2 5.8L12 16l-5 2.8L8.2 13 4 9l5.6-.6z"/></svg>
-      <span>许愿</span>
     </button>
     <button class="tab-btn" data-page="my">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
@@ -1735,7 +1749,10 @@ $('homeRefreshBtn').addEventListener('click', async ()=>{
   const btn = $('homeRefreshBtn');
   btn.classList.add('spinning');
   try{
-    await silentRefresh(true);
+    // 首页和许愿共用这一个刷新键，刷哪一份看你现在在哪一屏。
+    // 原来许愿自己有一个，两屏合并之后再摆两个刷新键只会让人犹豫该点哪个
+    if(homeScene === 'wish') await ensureWishes(true);
+    else await silentRefresh(true);
     showToast('已刷新');
   }finally{
     btn.classList.remove('spinning');
@@ -2523,7 +2540,39 @@ function buildFontShareCardNode(f){
 }
 
 /* ===================== tabs / nav ===================== */
-document.querySelectorAll('.tab-btn').forEach(btn=>btn.addEventListener('click',()=>showPage(btn.dataset.page)));
+document.querySelectorAll('.tab-btn').forEach(btn=>btn.addEventListener('click',()=>{
+  // 已经在分类页还再点一下分类，就退回到那四张卡片 ——
+  // 手机上大家本来就习惯"再点一下当前这个 tab 等于回到顶层"
+  if(btn.dataset.page === 'category' && currentPageId === 'category' && catZone) closeCatZone();
+  showPage(btn.dataset.page);
+}));
+
+/* 第一页分两屏。许愿原来是底部第五个 tab，底部砍到四个之后挪到这里。
+   刷新键两屏共用一个，发起许愿那个只在许愿屏出现 —— 摆在首页屏没有意义。 */
+let homeScene = 'main';
+function setHomeScene(scene){
+  homeScene = scene;
+  document.querySelectorAll('#homeSceneToggle button').forEach(b=>
+    b.classList.toggle('active', b.dataset.scene === scene));
+  const wish = scene === 'wish';
+  $('homePaneMain').style.display = wish ? 'none' : '';
+  $('homePaneWish').style.display = wish ? '' : 'none';
+  $('homeSearchBtn').style.display = wish ? 'none' : '';
+  $('wishNewBtn').style.display = wish ? '' : 'none';
+  if(wish){
+    // 先把手上已经有的画出来。ensureWishes 在"已经加载过"时会直接返回、
+    // 一行都不画 —— 从通知点进某条许愿也会把数据拉回来并标记成已加载，
+    // 那之后再切到这一屏就会是一片空白
+    renderWishList();
+    // 许愿板只在真的翻过去时才去拉数据。开屏就拉的话，多数人一次都不会点开，
+    // 却每个人每次都要付这份流量
+    ensureWishes();
+  }else{
+    $('homeSearchWrap').style.display = 'none';
+  }
+}
+document.querySelectorAll('#homeSceneToggle button').forEach(b=>
+  b.addEventListener('click', ()=>setHomeScene(b.dataset.scene)));
 function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   $('page-'+id).classList.add('active');
@@ -2531,9 +2580,6 @@ function showPage(id){
   document.querySelector('.page-scroll').scrollTop = 0;
   currentPageId = id;
   renderAll();
-  // 许愿板只在真的翻过去时才拉数据。放进开屏里的话，多数人一次都不会点开，
-  // 却每个人每次都要付这份流量
-  if(id === 'wish') ensureWishes();
 }
 // 往搜索框里粘一个作品链接就直接打开它。
 // 这条不经过剪贴板权限 —— iOS 不给持久授权，每次都要点系统的粘贴按钮，
@@ -3067,7 +3113,7 @@ function emptyStateHtml(text, action){
   const btn = action ? `<button class="btn-outline empty-action">${esc(action.label)}</button>` : '';
   return `<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/><circle cx="8.5" cy="8.5" r="1.2"/></svg><p>${esc(text)}</p>${btn}</div>`;
 }
-function renderItemsGrid(container, items, emptyText, action){
+function renderItemsGrid(container, items, emptyText, action, gridClass){
   if(!items.length){
     container.innerHTML = emptyStateHtml(emptyText || '这里还没有内容', action);
     // 必须在 container 里找。多个空列表同时渲染时（新用户的收藏页 + 我的页），
@@ -3076,7 +3122,7 @@ function renderItemsGrid(container, items, emptyText, action){
     if(btn && action) btn.addEventListener('click', action.onClick);
     return;
   }
-  container.innerHTML = `<div class="coll-grid">${items.map(it=> it.type==='font' ? fontBrowseCardHtml(it.data) : it.type==='post' ? postCardHtml(it.data) : collCardHtml(it.data)).join('')}</div>`;
+  container.innerHTML = `<div class="coll-grid${gridClass ? ' '+gridClass : ''}">${items.map(it=> it.type==='font' ? fontBrowseCardHtml(it.data) : it.type==='post' ? postCardHtml(it.data) : collCardHtml(it.data)).join('')}</div>`;
   container.querySelectorAll('.coll-card[data-id]').forEach(el=>{
     const id = el.dataset.id;
     let timer = null, longPressed = false;
@@ -3188,47 +3234,51 @@ function wantedDescsMatch(c, q){
   return c.emojis.some(e => (emojiDescs.get(e.id)||[]).some(r => low(r.text).includes(q)));
 }
 
-/* ===================== home ===================== */
+/* ===================== home =====================
+   首页不按类型分。分类有自己的 tab，进去还有专区，首页再放一遍纯属重复，
+   而且为了那一排切换，顶上一度叠了三排控件。现在这里只有一条流：
+   表情包、字体、其他、待描述全混在一起，按最新或最热排。
+   待描述也留在流里 —— 它要的就是被更多人看见，藏进分类里反而没人写。 */
 let homeSort = 'new';
-let homeMode = 'collections';
-document.querySelectorAll('#homeTypeToggle button').forEach(b=>{
-  b.addEventListener('click', ()=>{
-    document.querySelectorAll('#homeTypeToggle button').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    homeMode = b.dataset.type;
-    $('homeSectionTitle').textContent = homeMode==='fonts' ? '字体' : homeMode==='posts' ? '其他' : homeMode==='wanted' ? '待描述' : '作品';
-    renderHome();
-  });
-});
+
 function renderHome(){
   const q = $('homeSearch').value.trim().toLowerCase();
-  let items;
-  // 搜索时也要跟着上面的「表情包 / 字体」切换走，
-  // 否则搜索状态下点切换毫无反应，很困惑
-  if(homeMode==='fonts'){
-    let list = fonts;
-    if(q) list = list.filter(f => low(f.name).includes(q) || low(f.category).includes(q) || low(f.display_text).includes(q) || low(f.author_nickname).includes(q));
-    items = list.map(f=>({type:'font', data:f, sortKey: homeSort==='hot' ? (f.like_count||0) : new Date(f.created_at).getTime()}));
-  } else {
-    // 待描述的作品不混进普通表情包列表 —— 它们描述是空的，混在一起搜也搜不到、
-    // 看着还像是发漏了。两边靠 needsDesc 各取各的。
-    let list = collections.filter(c => !!c.needsDesc === (homeMode==='wanted'));
-    scheduleDescSearch(q, renderHome);
-    if(q) list = list.filter(c => low(c.title).includes(q) || low(c.category).includes(q) || low(c.author).includes(q) || descMatch(c, q) || wantedDescsMatch(c, q) || asArray(c.tags).some(t=>low(t).includes(q)));
-    items = list.map(c=>({type:'collection', data:c, sortKey: homeSort==='hot' ? c.likeCount : c.createdAt}));
-  }
-  if(homeMode==='posts'){
-    let list = posts;
-    if(q) list = list.filter(pt => low(pt.title).includes(q) || low(pt.author_nickname).includes(q) || low(pt.body).includes(q) || low(POST_KIND_LABEL[pt.kind]).includes(q) || asArray(pt.tags).some(t=>low(t).includes(q)));
-    items = list.map(pt=>({type:'post', data:pt, sortKey: homeSort==='hot' ? (pt.like_count||0) : new Date(pt.created_at).getTime()}));
-  }
+  // 表情包的描述词搜索要另外去库里查一趟，查回来再重画
+  scheduleDescSearch(q, renderHome);
+  const hot = homeSort === 'hot';
+  const items = [];
+
+  collections.forEach(c=>{
+    if(q && !(low(c.title).includes(q) || low(c.category).includes(q) || low(c.author).includes(q)
+              || descMatch(c, q) || wantedDescsMatch(c, q)
+              || asArray(c.tags).some(t=>low(t).includes(q)))) return;
+    items.push({ type:'collection', data:c, sortKey: hot ? c.likeCount : c.createdAt });
+  });
+
+  fonts.forEach(f=>{
+    if(q && !(low(f.name).includes(q) || low(f.category).includes(q)
+              || low(f.display_text).includes(q) || low(f.author_nickname).includes(q))) return;
+    items.push({ type:'font', data:f,
+                 sortKey: hot ? (f.like_count||0) : new Date(f.created_at).getTime() });
+  });
+
+  posts.forEach(pt=>{
+    if(q && !(low(pt.title).includes(q) || low(pt.author_nickname).includes(q) || low(pt.body).includes(q)
+              || low(POST_KIND_LABEL[pt.kind]).includes(q)
+              || asArray(pt.tags).some(t=>low(t).includes(q)))) return;
+    items.push({ type:'post', data:pt,
+                 sortKey: hot ? (pt.like_count||0) : new Date(pt.created_at).getTime() });
+  });
+
+  // 三种东西的 createdAt 都是毫秒时间戳，likeCount 都是个数，混排才对得上
   items.sort((a,b)=>b.sortKey-a.sortKey);
-  renderItemsGrid($('homeGrid'), items, q ? '没有找到相关内容，换个关键词试试' : (homeMode==='fonts'?'还没有字体':homeMode==='posts'?'还没有内容':homeMode==='wanted'?'还没有待描述的表情包':'还没有作品'));
+  renderItemsGrid($('homeGrid'), items,
+    q ? '没有找到相关内容，换个关键词试试' : '还没有作品', null, 'mixed');
 }
 $('homeSearch').addEventListener('input', renderHome);
-document.querySelectorAll('#homeSortRow .chip').forEach(c=>{
+document.querySelectorAll('#homeSortRow button').forEach(c=>{
   c.addEventListener('click', ()=>{
-    document.querySelectorAll('#homeSortRow .chip').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('#homeSortRow button').forEach(x=>x.classList.remove('active'));
     c.classList.add('active'); homeSort = c.dataset.sort; renderHome();
   });
 });
@@ -3237,15 +3287,74 @@ document.querySelectorAll('#homeSortRow .chip').forEach(c=>{
 let activeCategory = null;
 let activeAvatarCat = null;   // 头像下面的五个小分类
 let catMode = 'collections';
-document.querySelectorAll('#catTypeToggle button').forEach(b=>{
-  b.addEventListener('click', ()=>{
-    document.querySelectorAll('#catTypeToggle button').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    catMode = b.dataset.type;
-    activeCategory = null; activeAvatarCat = null;
-    renderCategoryChips(); renderCategory();
+// null = 还在第一层（四张大卡片）；有值 = 已经进了某一类的专区
+let catZone = null;
+
+const ZONES = [
+  { type:'collections', label:'表情包', sub:'一整包一整包的表情' },
+  { type:'fonts',       label:'字体',   sub:'可以下载安装的字体' },
+  { type:'posts',       label:'其他',   sub:'头像、铃声、头像框、教程、指路' },
+  { type:'wanted',      label:'待描述', sub:'缺描述词的表情包，等人来写' },
+];
+
+// 每张卡片配几张图当封面，看一眼就知道这一类里大概是些什么东西。
+// 字体没有图，那就留白 —— 硬塞一个灰块占位比留白还难看
+function zonePeek(type){
+  if(type === 'fonts') return { n: fonts.length, imgs: [] };
+  if(type === 'posts'){
+    return { n: posts.length,
+             imgs: posts.filter(pt=>(pt.url||'').trim() && (pt.kind==='avatar'||pt.kind==='avatar_frame'))
+                        .slice(0,4).map(pt=>({url:pt.url})) };
+  }
+  const want = type === 'wanted';
+  const list = collections.filter(c=>!!c.needsDesc === want);
+  const imgs = [];
+  for(const c of list){
+    for(const e of asArray(c.cover)){ if(imgs.length < 4) imgs.push(e); }
+    if(imgs.length >= 4) break;
+  }
+  return { n: list.length, imgs };
+}
+
+function renderZoneCards(){
+  const wrap = $('catZoneGrid'); if(!wrap) return;
+  wrap.innerHTML = ZONES.map(z=>{
+    const { n, imgs } = zonePeek(z.type);
+    return `<button class="zone-card" data-zone="${z.type}">
+      <div class="zone-cover">${imgs.length ? coverHtml(imgs, true) : '<div class="coll-cover single"><div class="coll-cover-inner"></div></div>'}</div>
+      <div class="zone-meta">
+        <div class="zone-name">${esc(z.label)}</div>
+        <div class="zone-sub">${n} 件 · ${esc(z.sub)}</div>
+      </div>
+    </button>`;
+  }).join('');
+  wrap.querySelectorAll('[data-zone]').forEach(b=>{
+    b.addEventListener('click', ()=>openCatZone(b.dataset.zone));
   });
-});
+}
+
+function openCatZone(type){
+  catZone = type; catMode = type;
+  activeCategory = null; activeAvatarCat = null;
+  const z = ZONES.find(x=>x.type===type);
+  $('catZoneTitle').textContent = z ? z.label : '专区';
+  $('catZoneCards').style.display = 'none';
+  $('catZoneView').style.display = '';
+  $('catSearch').value = '';
+  $('catSearchWrap').style.display = 'none';
+  renderCategoryChips(); renderCategory();
+  const sc = document.querySelector('.page-scroll'); if(sc) sc.scrollTop = 0;
+}
+
+function closeCatZone(){
+  catZone = null;
+  $('catZoneView').style.display = 'none';
+  $('catZoneCards').style.display = '';
+  renderZoneCards();
+  const sc = document.querySelector('.page-scroll'); if(sc) sc.scrollTop = 0;
+}
+
+$('catBackBtn').addEventListener('click', closeCatZone);
 $('catSearch').addEventListener('input', renderCategory);
 function renderCategoryChips(){
   const wrap = $('catChipRow'); wrap.innerHTML='';
@@ -3304,16 +3413,6 @@ function renderCategory(){
   renderItemsGrid($('catGrid'), items,
     activeAvatarCat ? `「${activeAvatarCat}」下暂时还没有头像`
     : activeCategory ? `「${activeCategory}」分类下暂时还没有内容` : '还没有内容');
-}
-
-/* ===================== favorites ===================== */
-function renderFavorites(){
-  const items = [
-    ...collections.filter(c=>favorited.has(c.id)).map(c=>({type:'collection', data:c})),
-    ...fonts.filter(f=>favorited.has(f.id)).map(f=>({type:'font', data:f})),
-    ...posts.filter(pt=>favorited.has(pt.id)).map(pt=>({type:'post', data:pt})),
-  ];
-  renderItemsGrid($('favGrid'), items, '还没有收藏任何内容', {label:'去首页看看', onClick:()=>showPage('home')});
 }
 
 
@@ -7370,26 +7469,58 @@ $('afTryBackBtn').addEventListener('click', ()=>$('afTryOverlay').classList.remo
    教程和指路不走这里 —— 那两类正文本身就是内容，凑不成列表。 */
 // 三种类型共用同一个列表和同一个粘贴框，差别写在这张表里。
 // 不这样的话，字体这边就是第三份一模一样的解析和渲染代码。
+// cats 原来是个布尔，只有字体用得上，于是分类列表就写死在渲染里了。
+// 头像也要选分类，而且是另一套（普通/情侣），再加一个布尔就得在渲染处
+// 分叉判断"到底该画哪一套"。索性把列表本身放进来，没有分类的写 null。
 const BATCH_KINDS = {
-  ringtone:     { label:'铃声',   table:'posts', pick:false, perms:true,  cats:false,
+  ringtone:     { label:'铃声',   table:'posts', pick:false, perms:true,  cats:null,
                   urlHint:'https://…  mp3 / m4a 等直链',
                   help:'贴直链，不要贴网盘或播放页地址，否则试听放不出来。' },
-  avatar_frame: { label:'头像框', table:'posts', pick:true,  perms:true,  cats:false,
+  avatar_frame: { label:'头像框', table:'posts', pick:true,  perms:true,  cats:null,
+                  preview:'contain',
                   urlHint:'https://…  头像框图片链接',
                   help:'选图会自动压缩并转成链接，可以一次选多张，每张自动占一行，名字再补上就行。透明底的 PNG 效果最好。' },
-  font:         { label:'字体',   table:'fonts', pick:false, perms:false, cats:true,
+  avatar:       { label:'头像',   table:'posts', pick:true,  perms:true,  cats:AVATAR_CATEGORIES,
+                  preview:'cover',
+                  urlHint:'https://…  头像图片链接',
+                  help:'选图可以一次选很多张。选「情侣」的时候相邻两张自动配成一对，左边那张排前面；' +
+                       '中途换分类不用重来，已经填进去的图会按新分类重新分组。' },
+  font:         { label:'字体',   table:'fonts', pick:false, perms:false, cats:FONT_CATEGORIES,
                   urlHint:'https://…  ttf / otf / woff2 直链',
                   help:'先把名字和链接批量导进来，卡片的展示文案、语言样例、背景这些之后点进每个字体单独调。' },
 };
+
+/* 情侣和普通之间来回切的时候，把已经填好的图重新分组，而不是让人从头再来。
+   一对拆开就是两张单图，两张单图合起来就是一对 —— 顺序保持原样，
+   名字尽量跟着它那张图走。
+   不这么做的话：选了十张普通头像，想改成情侣，就得把十个链接手动挪位置。 */
+function regroupAvatarRows(st, toPair){
+  const items = [];
+  st.rows.forEach(r=>{
+    if((r.url||'').trim())  items.push({ url:r.url.trim(),  title:(r.title||'').trim() });
+    if((r.url2||'').trim()) items.push({ url:r.url2.trim(), title:'' });
+  });
+  const out = [];
+  if(toPair){
+    for(let i=0; i<items.length; i+=2){
+      const a = items[i], b = items[i+1];
+      out.push({ id: uid(), title: a.title || (b ? b.title : ''), url: a.url, url2: b ? b.url : '' });
+    }
+  }else{
+    items.forEach(it=> out.push({ id: uid(), title: it.title, url: it.url, url2: '' }));
+  }
+  if(!out.length) out.push({ id: uid(), title:'', url:'', url2:'' });   // 一行都没有的界面没法用
+  st.rows = out;
+}
 let batchPost = null;
 
 function openPostBatch(kind){
   batchPost = {
     kind,
-    rows: [{ id: uid(), title: '', url: '' }],
+    rows: [{ id: uid(), title: '', url: '', url2: '' }],
     pasteOpen: false, pasteText: '',
-    category: FONT_CATEGORIES[0],
-    tags: [], tagInput: '',
+    category: (BATCH_KINDS[kind].cats || [null])[0],
+    tags: [], tagInput: '', credit: '',
     allowRepost: false, allowEdit: false, otherChecked: false, otherText: '',
   };
   $('postEditorOverlay').classList.add('open');
@@ -7401,20 +7532,38 @@ function openPostBatch(kind){
 function syncPostBatch(){
   const st = batchPost; if(!st) return;
   st.rows.forEach(r=>{
-    const t = document.querySelector(`[data-bp-title="${r.id}"]`);
-    const u = document.querySelector(`[data-bp-url="${r.id}"]`);
+    const t  = document.querySelector(`[data-bp-title="${r.id}"]`);
+    const u  = document.querySelector(`[data-bp-url="${r.id}"]`);
+    const u2 = document.querySelector(`[data-bp-url2="${r.id}"]`);
     if(t) r.title = t.value;
     if(u) r.url = u.value;
+    if(u2) r.url2 = u2.value;
   });
   const ti = $('bpTagInput'); if(ti) st.tagInput = ti.value;
   const ot = $('bpOther');    if(ot) st.otherText = ot.value;
+  const cr = $('bpCredit');   if(cr) st.credit = cr.value;
   const pt = $('bpPaste');    if(pt) st.pasteText = pt.value;
+}
+
+/* 往列表里塞一张图。单张就是新起一行；情侣的话，先看上一对是不是
+   只填了左边 —— 是就补成右边，不是才开新的一对。
+   选图和批量粘贴两处都要这么填，写两遍迟早会不一致。 */
+function fillOneUrl(st, pair, url, title){
+  const last = st.rows[st.rows.length - 1];
+  if(pair && last && (last.url||'').trim() && !(last.url2||'').trim()){
+    last.url2 = url;
+    return;
+  }
+  st.rows.push({ id: uid(), title: title || '', url, url2: '' });
 }
 
 function drawPostBatch(){
   const st = batchPost; if(!st) return;
   const cfg = BATCH_KINDS[st.kind];
-  const isFrame = st.kind === 'avatar_frame';
+  // 情侣是一对两张，一行就得有两个链接框。其它类型永远是单张
+  const pair = st.kind === 'avatar' && isPairCat(st.category);
+  const thumb = u => `<img src="${esc(u)}" alt="" referrerpolicy="no-referrer"
+    style="width:52px; height:52px; object-fit:${cfg.preview}; background:var(--bg-elev); border-radius:var(--radius-s);">`;
   const suggestions = getAllKnownTags().filter(t=>!st.tags.includes(t)).slice(0, 20);
 
   $('postEditorTitle').textContent = `发布${cfg.label}`;
@@ -7425,11 +7574,14 @@ function drawPostBatch(){
       ${st.rows.map((r, i)=>`
         <div class="row-item">
           <div class="row-main">
-            <input class="desc" data-bp-title="${r.id}" placeholder="第 ${i+1} 条的名字" value="${esc(r.title)}" maxlength="60">
+            <input class="desc" data-bp-title="${r.id}" placeholder="第 ${i+1} ${pair?'对':'条'}的名字" value="${esc(r.title)}" maxlength="60">
             <input class="url" data-bp-url="${r.id}"
-              placeholder="${esc(cfg.urlHint)}" value="${esc(r.url)}">
-            ${r.url.trim() && isFrame ? `<img src="${esc(r.url.trim())}" alt="" referrerpolicy="no-referrer"
-              style="width:52px; height:52px; object-fit:contain; margin-top:6px; background:var(--bg-elev); border-radius:var(--radius-s);">` : ''}
+              placeholder="${pair ? '左边那张' : esc(cfg.urlHint)}" value="${esc(r.url)}">
+            ${pair ? `<input class="url" data-bp-url2="${r.id}" style="margin-top:6px;"
+              placeholder="右边那张" value="${esc(r.url2 || '')}">` : ''}
+            ${cfg.preview && (r.url.trim() || (r.url2||'').trim()) ? `<div style="display:flex; gap:6px; margin-top:6px;">
+              ${r.url.trim() ? thumb(r.url.trim()) : ''}${pair && (r.url2||'').trim() ? thumb(r.url2.trim()) : ''}
+            </div>` : ''}
           </div>
           <button class="row-act-sm" data-bp-del="${r.id}">删除</button>
         </div>`).join('')}
@@ -7452,8 +7604,9 @@ function drawPostBatch(){
     ${cfg.cats ? `
     <div class="field-label">分类（这一批都用同一个）</div>
     <div class="chip-row" id="bpCatRow">
-      ${FONT_CATEGORIES.map(c=>`<button type="button" class="chip${st.category===c?' active':''}" data-bp-cat="${esc(c)}">${esc(c)}</button>`).join('')}
-    </div>` : ''}
+      ${cfg.cats.map(c=>`<button type="button" class="chip${st.category===c?' active':''}" data-bp-cat="${esc(c)}">${esc(c)}</button>`).join('')}
+    </div>
+    ${pair ? '<p class="field-help">一对两张，左边那张排前面。换成「普通」的话，已经填的图会自动拆成一张一条。</p>' : ''}` : ''}
 
     ${cfg.perms ? `
     <div class="field-label">标签（可选，最多 ${TAG_MAX} 个）</div>
@@ -7470,6 +7623,10 @@ function drawPostBatch(){
       <div class="perm-row" id="bpOtherRow"><div class="sel-check-inline ${st.otherChecked?'on':''}">${st.otherChecked?CHECK_SVG:''}</div><span class="perm-label">其他</span></div>
     </div>
     ${st.otherChecked ? `<input class="field-input" id="bpOther" placeholder="填写具体说明，例如：转载请注明出处" style="margin-top:8px;" value="${esc(st.otherText)}">` : ''}
+
+    <div class="field-label">来源说明（可选，这一批共用）</div>
+    <input class="field-input" id="bpCredit" placeholder="例如：已获原作者 @xxx 同意分享" value="${esc(st.credit)}">
+    <p class="field-help">出处不同的图分几批发。单独某一条要写别的，发完点进那一条再改。</p>
     ` : ''}
 
     <div class="btn-row" style="margin-top:18px;"><button class="btn-solid" id="bpSubmit">确认发布</button></div>
@@ -7477,7 +7634,7 @@ function drawPostBatch(){
 
   $('bpAdd').addEventListener('click', ()=>{
     syncPostBatch();
-    st.rows.push({ id: uid(), title: '', url: '' });
+    st.rows.push({ id: uid(), title: '', url: '', url2: '' });
     drawPostBatch();
   });
 
@@ -7494,8 +7651,8 @@ function drawPostBatch(){
     if(!good.length){ showToast('没认出任何一条，看看每行里有没有链接'); return; }
     // 末尾那条完全空着的先用掉（刚进来默认就有一条），别在中间留个空行
     const tail = st.rows[st.rows.length-1];
-    if(tail && !tail.title.trim() && !tail.url.trim()) st.rows.pop();
-    good.forEach(x=>st.rows.push({ id: uid(), title: x.desc || '', url: x.url }));
+    if(tail && !tail.title.trim() && !tail.url.trim() && !(tail.url2||'').trim()) st.rows.pop();
+    good.forEach(x=>fillOneUrl(st, pair, x.url, x.desc || ''));
     st.pasteText = ''; st.pasteOpen = false;
     drawPostBatch();
     const bad = parsed.length - good.length;
@@ -7505,13 +7662,13 @@ function drawPostBatch(){
     b.addEventListener('click', ()=>{
       syncPostBatch();
       st.rows = st.rows.filter(r=>r.id !== b.dataset.bpDel);
-      if(!st.rows.length) st.rows.push({ id: uid(), title: '', url: '' });   // 一行都没有的界面没法用
+      if(!st.rows.length) st.rows.push({ id: uid(), title: '', url: '', url2: '' });   // 一行都没有的界面没法用
       drawPostBatch();
     });
   });
-  // 贴完头像框链接就立刻出一张小图，贴错了当场看得出来
-  if(isFrame){
-    $('postEditorBody').querySelectorAll('[data-bp-url]').forEach(inp=>{
+  // 贴完链接就立刻出一张小图，贴错了当场看得出来
+  if(cfg.preview){
+    $('postEditorBody').querySelectorAll('[data-bp-url],[data-bp-url2]').forEach(inp=>{
       inp.addEventListener('change', ()=>{ syncPostBatch(); drawPostBatch(); });
     });
   }
@@ -7523,14 +7680,24 @@ function drawPostBatch(){
     if(!urls.length) return;
     // 末尾那条要是完全空着（刚进来默认就有一条），先用掉它，别在中间留个空行
     const tail = st.rows[st.rows.length-1];
-    if(tail && !tail.title.trim() && !tail.url.trim()) st.rows.pop();
-    urls.forEach(u=>st.rows.push({ id: uid(), title: '', url: u }));
+    if(tail && !tail.title.trim() && !tail.url.trim() && !(tail.url2||'').trim()) st.rows.pop();
+    urls.forEach(u=>fillOneUrl(st, pair, u));
     drawPostBatch();
   });
 
   const catRow = $('bpCatRow');
   if(catRow) catRow.querySelectorAll('[data-bp-cat]').forEach(b=>{
-    b.addEventListener('click', ()=>{ syncPostBatch(); st.category = b.dataset.bpCat; drawPostBatch(); });
+    b.addEventListener('click', ()=>{
+      syncPostBatch();
+      const next = b.dataset.bpCat;
+      // 头像在"一对两张"和"一张一条"之间切，已经填进去的图跟着重新分组，
+      // 不然换个分类就得把所有链接手动挪一遍位置
+      if(st.kind === 'avatar' && isPairCat(next) !== isPairCat(st.category)){
+        regroupAvatarRows(st, isPairCat(next));
+      }
+      st.category = next;
+      drawPostBatch();
+    });
   });
 
   // 字体没有标签和权限那两段，下面这些元素根本不存在，得整块跳过
@@ -7572,13 +7739,17 @@ async function submitPostBatch(){
   const st = batchPost; if(!st) return;
   syncPostBatch();
 
-  // 完全空的行直接忽略：多点了一下「添加一条」不该变成报错
-  const rows = st.rows.filter(r=>r.title.trim() || r.url.trim());
-  if(!rows.length){ showToast('还没有填任何一条'); return; }
-  const bad = rows.findIndex(r=>!r.title.trim() || !r.url.trim());
-  if(bad >= 0){ showToast(`第 ${bad+1} 条的名字和链接都要填`); return; }
-
   const cfg = BATCH_KINDS[st.kind];
+  const pair = st.kind === 'avatar' && isPairCat(st.category);
+
+  // 完全空的行直接忽略：多点了一下「添加一条」不该变成报错
+  const rows = st.rows.filter(r=>r.title.trim() || r.url.trim() || (r.url2||'').trim());
+  if(!rows.length){ showToast('还没有填任何一条'); return; }
+  const bad = rows.findIndex(r=>!r.title.trim() || !r.url.trim() || (pair && !(r.url2||'').trim()));
+  if(bad >= 0){
+    showToast(pair ? `第 ${bad+1} 对要填名字和两张图` : `第 ${bad+1} 条的名字和链接都要填`);
+    return;
+  }
   const payload = cfg.table === 'fonts'
     // 卡片的样式这里一律用新建字体时的那套默认值 —— 跟单条编辑器保持一致，
     // 导进来之后点开某个字体还能单独调
@@ -7593,7 +7764,11 @@ async function submitPostBatch(){
       }))
     : rows.map(r=>({
         kind: st.kind, title: r.title.trim(), url: r.url.trim(),
-        body: '', link: '', credit: '',
+        // 这两列只有头像用得上，别的 kind 一律写空 —— 跟单条编辑器保持一致
+        url2: pair ? r.url2.trim() : null,
+        category: st.kind === 'avatar' ? st.category : null,
+        body: '', link: '',
+        credit: st.credit.trim(),
         tags: st.tags.slice(),
         allow_repost: st.allowRepost,
         allow_edit: st.allowEdit,
@@ -7609,7 +7784,7 @@ async function submitPostBatch(){
 
   $('postEditorOverlay').classList.remove('open');
   batchPost = null;
-  showToast(`已发布 ${payload.length} 条`);
+  showToast(`已发布 ${payload.length} ${pair ? '对' : '条'}`);
   if(cfg.table === 'fonts') await loadFonts(); else await loadPosts();
   renderAll(); showPage('my');
 }
@@ -7622,7 +7797,7 @@ function renderPostKindPick(){
   wrap.querySelectorAll('.post-kind-btn').forEach(b=>{
     b.addEventListener('click', ()=>{
       const k = b.dataset.kind;
-      // 铃声和头像框一条就是「一个名字加一个地址」，做成列表能一次发好几条。
+      // 铃声、头像框、头像一条就是「一个名字加一两个地址」，做成列表能一次发好几条。
       // 教程和指路的正文本身就是内容，列不成表，还走原来那个单条编辑器。
       // 编辑已有的帖子也一律走单条编辑器 —— 批量那套改的是一批，不是某一条。
       if(BATCH_KINDS[k]) openPostBatch(k); else openPostEditor(k, null);
@@ -8818,7 +8993,6 @@ document.querySelectorAll('#wishSortRow .chip').forEach(btn=>{
     renderWishList();
   });
 });
-$('wishRefreshBtn').addEventListener('click', async ()=>{ await ensureWishes(true); showToast('已刷新'); });
 $('wishNewBtn').addEventListener('click', openWishComposer);
 
 /* ---- 发起许愿 ---- */
@@ -9130,8 +9304,9 @@ async function openWishFromNotification(id){
 function renderAll(){
   rebuildUserStats();
   renderHome();
-  renderCategoryChips(); renderCategory();
-  renderFavorites();
+  // 没进专区的时候只要画四张卡片，一整页作品列表白算
+  renderZoneCards();
+  if(catZone){ renderCategoryChips(); renderCategory(); }
   renderMy();
 }
 renderPubItems();
