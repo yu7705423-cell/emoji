@@ -59,12 +59,11 @@
   @media (prefers-reduced-motion:reduce){ *{animation-duration:.001s !important; transition-duration:.001s !important;} }
   @media (pointer: coarse), (max-width:600px){ input, textarea, select{font-size:16px !important;} }
 
-  /* 高度这两行的顺序不能反。100vh 在手机浏览器上量的是「地址栏收起来时」的高度，
-     比真正看得见的那块要高一截；外壳又是 overflow:hidden，多出来的部分就永远
-     够不着 —— 底部内容看着像被切掉了。屏幕越小，地址栏占的比例越大，越明显。
-     dvh 跟着可视区域走，认得它的浏览器用下面这行；不认的落回 100vh，
-     再由脚本里那段 innerHeight 兜底。 */
-  .frame{position:relative; max-width:480px; margin:0 auto; height:100vh; height:100dvh; display:flex; flex-direction:column; border-left:1px solid var(--border); border-right:1px solid var(--border); background:var(--bg); overflow:hidden;}
+  /* 100vh 在手机浏览器上量的是「地址栏收起来时」的高度，比真正看得见的那块高一截；
+     外壳又是 overflow:hidden，多出来的部分就永远够不着 —— 底部内容看着像被切掉了。
+     这里只留 100vh 打底（脚本没跑起来时至少还有个高度），真正的高度由下面
+     那段脚本按 innerHeight 钉。不用 dvh。 */
+  .frame{position:relative; max-width:480px; margin:0 auto; height:100vh; display:flex; flex-direction:column; border-left:1px solid var(--border); border-right:1px solid var(--border); background:var(--bg); overflow:hidden;}
   /* 壁纸垫在 .frame 的底色下面。.frame 本身是不透明的 var(--bg)，
      所以设了壁纸才把它改成透明，让下面这层露出来。 */
   .frame.has-wall{background:transparent;}
@@ -1385,20 +1384,19 @@ const $ = id => document.getElementById(id);
     overlay.style.display = 'none';
   });
 })();
-// 不认 dvh 的老浏览器（正好就是那些小屏老机器）：CSS 只能落回 100vh，
-// 而 100vh 比看得见的那块高，外壳又是 overflow:hidden，底部就够不着了。
-// 这里用 innerHeight 直接把外壳钉成可视高度。认 dvh 的一律不插手 ——
-// 交给 CSS 跟着地址栏平滑伸缩，比监听 resize 自己改要稳。
+// 外壳高度一律由这里钉，所有浏览器走同一条路，不用 dvh。
+// 为什么用 innerHeight 而不是 visualViewport.height：后者在键盘弹出时会跟着缩，
+// 而发布页整页都是输入框 —— 一打字外壳就塌下去半截，比原来的毛病还难受。
 (function(){
-  try{
-    if(window.CSS && CSS.supports && CSS.supports('height', '100dvh')) return;
-  }catch(e){ /* 老浏览器连 CSS.supports 都没有，那就照着往下兜底 */ }
   const frame = document.querySelector('.frame');
   if(!frame) return;
-  const fit = () => { frame.style.height = window.innerHeight + 'px'; };
+  let raf = 0;
+  const fit = () => { raf = 0; frame.style.height = window.innerHeight + 'px'; };
+  // iOS 地址栏收放的那一下会连着抛好几个 resize，攒到下一帧再量，省得反复重排
+  const schedule = () => { if(!raf) raf = requestAnimationFrame(fit); };
   fit();
-  window.addEventListener('resize', fit);
-  // 转屏时 innerHeight 不是立刻就位，等一帧再量
+  window.addEventListener('resize', schedule);
+  // 转屏时 innerHeight 不是立刻就位，等一下再量
   window.addEventListener('orientationchange', () => setTimeout(fit, 120));
 })();
 const uid = () => Math.random().toString(36).slice(2,10);
