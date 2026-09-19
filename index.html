@@ -59,7 +59,12 @@
   @media (prefers-reduced-motion:reduce){ *{animation-duration:.001s !important; transition-duration:.001s !important;} }
   @media (pointer: coarse), (max-width:600px){ input, textarea, select{font-size:16px !important;} }
 
-  .frame{position:relative; max-width:480px; margin:0 auto; height:100vh; display:flex; flex-direction:column; border-left:1px solid var(--border); border-right:1px solid var(--border); background:var(--bg); overflow:hidden;}
+  /* 高度这两行的顺序不能反。100vh 在手机浏览器上量的是「地址栏收起来时」的高度，
+     比真正看得见的那块要高一截；外壳又是 overflow:hidden，多出来的部分就永远
+     够不着 —— 底部内容看着像被切掉了。屏幕越小，地址栏占的比例越大，越明显。
+     dvh 跟着可视区域走，认得它的浏览器用下面这行；不认的落回 100vh，
+     再由脚本里那段 innerHeight 兜底。 */
+  .frame{position:relative; max-width:480px; margin:0 auto; height:100vh; height:100dvh; display:flex; flex-direction:column; border-left:1px solid var(--border); border-right:1px solid var(--border); background:var(--bg); overflow:hidden;}
   /* 壁纸垫在 .frame 的底色下面。.frame 本身是不透明的 var(--bg)，
      所以设了壁纸才把它改成透明，让下面这层露出来。 */
   .frame.has-wall{background:transparent;}
@@ -86,7 +91,10 @@
   .icon-btn:active{transform:scale(.9);}
   .icon-btn svg{width:19px; height:19px;}
 
-  .page-scroll{flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:64px;}
+  /* 底部这一下必须带安全区：tab 栏是 fixed 的，自己有 padding-bottom:env(safe-area-inset-bottom)，
+     所以在有底部指示条的机器上它比 64px 高。写死 64px 的话，最后一截内容会压在 tab 栏底下 ——
+     同一页里 toast 和 clip-bar 早就是 calc(…+env(…)) 了，就这里漏了 */
+  .page-scroll{flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:calc(64px + env(safe-area-inset-bottom));}
 
   .page{display:none; padding:calc(14px + env(safe-area-inset-top)) 18px 22px;}
   .page.active{display:block;}
@@ -1376,6 +1384,22 @@ const $ = id => document.getElementById(id);
     try{ localStorage.setItem(KEY, '1'); }catch(e){}
     overlay.style.display = 'none';
   });
+})();
+// 不认 dvh 的老浏览器（正好就是那些小屏老机器）：CSS 只能落回 100vh，
+// 而 100vh 比看得见的那块高，外壳又是 overflow:hidden，底部就够不着了。
+// 这里用 innerHeight 直接把外壳钉成可视高度。认 dvh 的一律不插手 ——
+// 交给 CSS 跟着地址栏平滑伸缩，比监听 resize 自己改要稳。
+(function(){
+  try{
+    if(window.CSS && CSS.supports && CSS.supports('height', '100dvh')) return;
+  }catch(e){ /* 老浏览器连 CSS.supports 都没有，那就照着往下兜底 */ }
+  const frame = document.querySelector('.frame');
+  if(!frame) return;
+  const fit = () => { frame.style.height = window.innerHeight + 'px'; };
+  fit();
+  window.addEventListener('resize', fit);
+  // 转屏时 innerHeight 不是立刻就位，等一帧再量
+  window.addEventListener('orientationchange', () => setTimeout(fit, 120));
 })();
 const uid = () => Math.random().toString(36).slice(2,10);
 // 必须连引号一起转义：esc 的结果大量出现在 value="..." / src="..." 里，
