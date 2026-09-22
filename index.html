@@ -1495,15 +1495,62 @@ function authErrText(err){
     return '刚才试得太频繁，被临时限流了。等几分钟再试 —— 跟密码对不对无关';
   if(/invalid login credentials|invalid_credentials/i.test(m + code))
     return '账号或密码不对';
-  if(/failed to fetch|networkerror|network request failed/i.test(m))
+  if(isNetErr(m))
     return '连不上服务器，检查一下网络再试';
   return '登录失败：' + (m || '未知错误');
 }
 function showJoinError(msg){ const el=$('joinError'); el.textContent=msg; el.style.display='block'; showToast(msg); }
 
+// 同一件事，各家浏览器说法不同：Safari 说 "Load failed"，Chrome 说 "Failed to fetch"，
+// 安卓 WebView 又是 "Network request failed"。意思都是这一发请求压根没出去或没回来，
+// 跟账号、跟数据都没关系。认出来才能决定是该重试还是该如实报错。
+function isNetErr(e){
+  const m = String((e && e.message) || e || '');
+  return /load failed|failed to fetch|networkerror|network request failed|network error|connection (closed|reset|refused)|timed? ?out|the operation was aborted|err_/i.test(m);
+}
+const sleepMs = ms => new Promise(r=>setTimeout(r, ms));
+// 地铁里、电梯里、Wi-Fi 刚连上的那两秒 —— 开屏这一发请求最容易空掉。
+// 空一次就停在「连接失败」，人只能自己刷新；这里替他刷。
+// supabase 的查询不抛错，它把错塞在返回值的 error 里，所以两种形状都得认。
+async function withNetRetry(fn, tries = 3){
+  let last = null;
+  for(let i = 0; i < tries; i++){
+    let res;
+    try{ res = await fn(); }
+    catch(e){
+      if(!isNetErr(e) || i === tries - 1) throw e;
+      last = e; await sleepMs(600 * (i + 1)); continue;
+    }
+    const err = res && res.error;
+    if(!err || !isNetErr(err) || i === tries - 1) return res;
+    last = err; await sleepMs(600 * (i + 1));
+  }
+  throw last;
+}
+const BOOT_SPIN_HTML = '<div class="boot-box"><div class="wordmark boot-mark">Yoww</div><div class="boot-spin"></div><div class="boot-tip">正在连接…</div></div>';
+// 开屏失败以前只留一句「请检查网络后刷新重试」，于是人一遍遍刷。
+// 分清是网络还是服务器，把重试按在页面上（手机上刷新还会丢掉正在填的邀请码），
+// 原话留在最下面一行 —— 排查时要问的就是这一句。
+function bootFail(err){
+  const raw = String((err && err.message) || err || '');
+  const net = isNetErr(raw);
+  const box = $('loadingOverlay');
+  box.style.display = 'flex';
+  box.innerHTML = `<div class="boot-box" style="padding:0 24px; text-align:center;">
+      <div class="wordmark boot-mark">Yoww</div>
+      <p class="hint" style="margin:14px 0 6px;">${net ? '连不上服务器' : '服务器回了个错'}</p>
+      <p class="hint" style="margin:0 0 18px;">${net ? '请求发出去没有回来。换个网络再试一次（比如 Wi-Fi 切成流量），多半就好了。' : '数据没能读出来。稍后再试一次，还是这样就把下面这行发给我。'}</p>
+      <button class="btn-solid" id="bootRetryBtn">重试</button>
+      <p class="hint" style="margin-top:16px; font-size:12px; opacity:.55; word-break:break-all;">${esc(raw || '未知错误')}</p>
+    </div>`;
+  const btn = document.getElementById('bootRetryBtn');
+  if(btn) btn.addEventListener('click', ()=>{ box.innerHTML = BOOT_SPIN_HTML; initAuth(); });
+  console.error('开屏失败：', err);
+}
+
 async function initAuth(){
   try{
-    const { data:{ session } } = await sb.auth.getSession();
+    const { data:{ session } } = await withNetRetry(()=> sb.auth.getSession());
     if(!session){
       $('loadingOverlay').style.display = 'none';
       $('joinOverlay').classList.add('open');
@@ -1511,7 +1558,7 @@ async function initAuth(){
       return;
     }
     currentUserId = session.user.id;
-    const { data: profile, error: pErr } = await sb.from('users').select('*').eq('id', currentUserId).maybeSingle();
+    const { data: profile, error: pErr } = await withNetRetry(()=> sb.from('users').select('*').eq('id', currentUserId).maybeSingle());
     if(pErr) throw pErr;
     if(!profile){
       // 有登录状态但没资料：上次注册成功、兑换邀请码失败。
@@ -1547,7 +1594,7 @@ async function initAuth(){
       if(document.visibilityState === 'visible') clipCheckOnFocus().catch(()=>{});
     });
   }catch(err){
-    $('loadingOverlay').innerHTML = `<p class="hint" style="text-align:center; padding:0 24px;">连接失败：${esc(err.message||String(err))}<br>请检查网络后刷新重试。</p>`;
+    bootFail(err);
   }
 }
 function applyProfile(profile){
@@ -1838,8 +1885,24 @@ async function loadMyLikesFavorites(){
   if(fErr) showToast('加载收藏失败：'+fErr.message);
   else favorited = new Set((favRows||[]).flatMap(r=>[r.collection_id, r.font_id, r.post_id].filter(Boolean)));
 }
+// 七个加载器各自都会降级，但以前是 Promise.all —— 任何一个抛出来，
+// 整站就停在「连接失败」，哪怕只是通知读不出来。互相之间没有依赖，
+// 谁掉队谁自己空着，其余六份照常上屏。
+const APP_LOADERS = [
+  ['作品', ()=>loadCollections()],
+  ['点赞收藏', ()=>loadMyLikesFavorites()],
+  ['字体', ()=>loadFonts()],
+  ['其他', ()=>loadPosts()],
+  ['通知', ()=>loadNotifications()],
+  ['描述词', ()=>loadEmojiDescs()],
+  ['本地仓库', ()=>loadRepo()],
+];
+async function runAppLoaders(){
+  const settled = await Promise.allSettled(APP_LOADERS.map(j=>j[1]()));
+  settled.forEach((r, i)=>{ if(r.status === 'rejected') console.warn('加载'+APP_LOADERS[i][0]+'失败：', r.reason); });
+}
 async function loadAppData(){
-  await Promise.all([loadCollections(), loadMyLikesFavorites(), loadFonts(), loadPosts(), loadNotifications(), loadEmojiDescs(), loadRepo()]);
+  await runAppLoaders();
   renderProfileBits();
   renderAll();
   startAutoRefresh();
@@ -1866,7 +1929,7 @@ async function silentRefresh(force){
   const scroller = document.querySelector('.page-scroll');
   const scrollPos = scroller ? scroller.scrollTop : 0;
   try{
-    await Promise.all([loadCollections(), loadMyLikesFavorites(), loadFonts(), loadPosts(), loadNotifications(), loadEmojiDescs(), loadRepo()]);
+    await runAppLoaders();
     renderProfileBits();
     renderAll();
     if(scroller) scroller.scrollTop = scrollPos;
