@@ -1443,7 +1443,23 @@ function asArray(v){ return Array.isArray(v) ? v : []; }
 function low(v){ return String(v==null?'':v).toLowerCase(); }
 
 /* ===================== supabase client ===================== */
-const SUPABASE_URL = 'https://mejkhrxqdlybfatzecsc.supabase.co';
+// 数据接口不再直连 supabase.co。页面在自己的域名上打得开，数据却时通时不通 ——
+// 微信那套内置浏览器尤其明显，它的网络栈和系统浏览器是两回事。/sb 由自家
+// Worker 转给 Supabase，对浏览器来说，数据和这个页面同一个域名、同一条路：
+// 页面既然能打开，数据就没道理打不开。
+const SUPABASE_DIRECT = 'https://mejkhrxqdlybfatzecsc.supabase.co';
+// 主站用同源的相对路径，连跨域预检都省了；GitHub Pages 上那份备份、套壳 App
+// 里的页面不在这个域名下，只能写死绝对地址（Worker 那边放了跨域头）
+const SUPABASE_PROXY = 'https://yoww2026.cn/sb';
+const SUPABASE_URL = /^(www\.)?yoww2026\.cn$/i.test(location.hostname)
+  ? location.origin + '/sb'
+  : SUPABASE_PROXY;
+// 老数据里存的头像链接还指着 supabase.co。数据库一条都不用动 —— 读出来的时候
+// 换成走自己域名的那条路就行。将来域名再变，也只改上面那一处。
+function sbUrl(u){
+  const s = String(u == null ? '' : u);
+  return s.startsWith(SUPABASE_DIRECT) ? SUPABASE_URL + s.slice(SUPABASE_DIRECT.length) : s;
+}
 const SUPABASE_ANON_KEY = 'sb_publishable_21TWA4F0KgENzkYF7TopFA_0G8mrbay';
 const sb = (function(){
   // 依赖挂了就直接停在这里给提示。否则后面每一处 sb.xxx 都会抛错，
@@ -1542,31 +1558,40 @@ function bootFail(err){
       <p class="hint" style="margin:0 0 18px;">${net ? '请求发出去没有回来。换个网络再试一次（比如 Wi-Fi 切成流量），多半就好了。' : '数据没能读出来。稍后再试一次，还是这样就把下面这行发给我。'}</p>
       <button class="btn-solid" id="bootRetryBtn">重试</button>
       <p class="hint" style="margin-top:16px; font-size:12px; opacity:.55; word-break:break-all;">${esc(raw || '未知错误')}</p>
-      <p class="hint" id="bootProbe" style="margin-top:6px; font-size:12px; opacity:.55; word-break:break-all;">接口探测中…</p>
+      <p class="hint" id="bootProbeA" style="margin-top:8px; font-size:12px; opacity:.55; word-break:break-all;">探测中…</p>
+      <p class="hint" id="bootProbeB" style="margin-top:2px; font-size:12px; opacity:.55; word-break:break-all;">探测中…</p>
     </div>`;
   const btn = document.getElementById('bootRetryBtn');
   if(btn) btn.addEventListener('click', ()=>{ box.innerHTML = BOOT_SPIN_HTML; initAuth(); });
   bootProbe();
   console.error('开屏失败：', err);
 }
-// 失败的那一刻，这条路到底通不通？这是区分「网络偶尔抖一下」和「整条路断了」
+// 失败的那一刻，路到底通不通？这是区分「网络偶尔抖一下」和「整条路断了」
 // 的唯一硬证据 —— 前者刷新就好，后者得换条路走。不带 key 发，通了会回一句
-// 「没有 API key」，那也算通：我们要的只是"能不能走到对面"。
-async function bootProbe(){
-  const el = document.getElementById('bootProbe');
+// 「没有 API key」，那也算通：要的只是"能不能走到对面"。
+//
+// 两条路一起探：自家域名这条（数据现在走的）和直连 supabase.co 那条（以前走的）。
+// 两条都不通 = 手机根本没网；自家不通而直连通 = 反代这一层出了问题；
+// 自家通而直连不通 = 反代正是为此而做的，只是这一发没赶上。
+// 一张截图就能分完，不用再来回问。
+async function probeOnce(el, label, base){
   if(!el) return;
   const t0 = Date.now();
   const ctl = (typeof AbortController === 'function') ? new AbortController() : null;
-  // 不设超时的话，路不通时它会挂在那里转好几十秒，页面上一直是「探测中」
+  // 不设超时的话，路不通时它会挂在那里转好几十秒，页面上一直停在「探测中」
   const timer = ctl ? setTimeout(()=>ctl.abort(), 8000) : null;
   try{
-    const r = await fetch(SUPABASE_URL + '/rest/v1/', { method:'GET', cache:'no-store', signal: ctl ? ctl.signal : undefined });
-    el.textContent = `接口探测：HTTP ${r.status} · ${Date.now()-t0}ms · 这一刻是通的`;
+    const r = await fetch(base + '/rest/v1/', { method:'GET', cache:'no-store', signal: ctl ? ctl.signal : undefined });
+    el.textContent = `${label}：HTTP ${r.status} · ${Date.now()-t0}ms · 通`;
   }catch(e){
-    el.textContent = `接口探测：${String((e && e.message) || e)} · ${Date.now()-t0}ms · 这一刻不通`;
+    el.textContent = `${label}：${String((e && e.message) || e)} · ${Date.now()-t0}ms · 不通`;
   }finally{
     if(timer) clearTimeout(timer);
   }
+}
+function bootProbe(){
+  probeOnce(document.getElementById('bootProbeA'), '自家域名', SUPABASE_URL);
+  probeOnce(document.getElementById('bootProbeB'), '直连', SUPABASE_DIRECT);
 }
 
 async function initAuth(){
@@ -1621,7 +1646,7 @@ async function initAuth(){
 function applyProfile(profile){
   currentUser = profile.nickname;
   statusMessage = profile.status_message || '';
-  avatarDataUrl = profile.avatar_url || null;
+  avatarDataUrl = sbUrl(profile.avatar_url) || null;
 }
 
 function setAuthMode(mode){
@@ -1775,7 +1800,7 @@ async function loadCollections(){
       title: c.title,
       author: c.author_nickname,
       authorId: c.user_id,
-      authorAvatarUrl: c.author_avatar_url || null,
+      authorAvatarUrl: sbUrl(c.author_avatar_url) || null,
       category: c.category,
       tags: asArray(perm.tags).map(t=>String(t==null?'':t).trim()).filter(Boolean),
       allowRepost: !!perm.allow_repost,
@@ -3199,7 +3224,7 @@ function rebuildUserStats(){
     let s = map.get(id);
     if(!s){ s = {userId:id, nickname:'', avatarUrl:null, worksCount:0, totalLikes:0}; map.set(id, s); }
     if(nickname) s.nickname = nickname;
-    if(avatarUrl) s.avatarUrl = avatarUrl;
+    if(avatarUrl) s.avatarUrl = sbUrl(avatarUrl);
     return s;
   };
   collections.forEach(c=>{

@@ -1,8 +1,9 @@
 /**
- * Yoww 图片上传接口。
+ * Yoww 的服务端。两件事：图片上传，和把数据接口转给 Supabase。
  *
- * 这个 Worker 只管一件事：把登录用户传上来的图片存进 R2，换一个公开链接回去。
  * 静态文件（index.html 等）仍然由 assets 直接送，匹配不上的请求才会走到这里。
+ *
+ * 上传这一件：把登录用户传上来的图片存进 R2，换一个公开链接回去。
  *
  * 为什么要有这一层、不让浏览器直接写 R2：
  * 桶要是能被前端直接写，那就等于全世界都能往里塞东西 —— 匿名的人、脚本、
@@ -121,6 +122,97 @@ async function handleUpload(req, env) {
   return json({ ok: true, url: `${env.IMG_BASE}/${key}` });
 }
 
+/* ===================== Supabase 反代 ===================== */
+/**
+ * 数据接口原先是浏览器直连 *.supabase.co 的。页面在自己的域名上打得开，
+ * 数据却时通时不通 —— 微信那套内置浏览器尤其明显：它的网络栈和系统浏览器
+ * 是两回事，地址栏里手动打开一切正常，页面里的请求却会莫名其妙地掐掉。
+ *
+ * 现在前端只认 /sb/…，由这里转给 Supabase。对浏览器来说，数据和 index.html
+ * 走的是同一个域名、同一条路 —— 页面既然能打开，数据就没道理打不开。
+ *
+ * 这一层没有把私密的东西暴露出来：转过去的仍然是那个本来就人人可见的 anon
+ * key（index.html 里就有一份），权限照旧由 RLS 决定，谁也没多拿到什么。
+ * 反过来说，这里绝对不能替请求补上任何凭据 —— 一旦哪天在这儿加了
+ * service_role，那就等于把整个数据库开给全世界，而且从外面看不出来。
+ */
+const SB_PREFIX = '/sb/';
+// 只放行用到的这四组。多开一条路就多一分要操心的事，而这四组之外的一个都没用上。
+// functions/v1 别漏：导出卡片时代取跨域图的那个 img-proxy 就在那儿，
+// 漏了它不会报错，只会让导出的卡片上少几张图 —— 静默失败最难查。
+const SB_ALLOW = ['rest/v1/', 'auth/v1/', 'storage/v1/', 'functions/v1/'];
+
+// 跨域头：主站是同源访问，用不上这些；但 GitHub Pages 上那份备份、
+// 以及套壳 App 里的页面，域名跟这里不一样，得让它们过。
+// 给 `*` 而不是回显来源，是因为这里不认 cookie，认的是 Authorization 头 ——
+// 凭据得由调用方自己带上，别处的网站拿不到，所以放开来源不会多让谁进来。
+// Supabase 自己对外也正是这么回的。
+function sbCorsHeaders(req) {
+  return {
+    'access-control-allow-origin': '*',
+    'access-control-allow-methods': 'GET, POST, PATCH, PUT, DELETE, HEAD, OPTIONS',
+    'access-control-allow-headers':
+      req.headers.get('access-control-request-headers') ||
+      'authorization, apikey, content-type, prefer, x-client-info, range',
+    'access-control-expose-headers': 'content-range, content-length, etag',
+    'access-control-max-age': '86400',
+  };
+}
+
+async function handleSupabase(req, env, url) {
+  const rest = url.pathname.slice(SB_PREFIX.length);
+  if (!SB_ALLOW.some(prefix => rest.startsWith(prefix))) {
+    return json({ ok: false, error: '这个路径没开放' }, 404);
+  }
+  // 预检只问"能不能发"，不该真的转一趟给 Supabase
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: sbCorsHeaders(req) });
+
+  const target = new URL(env.SUPABASE_URL);
+  target.pathname = '/' + rest;
+  target.search = url.search;
+
+  // 只有公开图片才让 CDN 缓存：它们的地址带随机串或 ?v=，内容不会变。
+  // 其余一概不缓存 —— 接口回的是每个人各自的数据，缓存一次就是串号，
+  // 而且串的是登录后的内容，比出错还糟。
+  const cacheable = req.method === 'GET' && rest.startsWith('storage/v1/object/public/');
+
+  // 用原请求造一个新的：方法、头、body 原样带过去，host 按目标地址重算。
+  // 凭据（apikey / authorization）是调用方自己带的，这里既不加也不改。
+  const forwarded = new Request(target, req);
+
+  const init = { redirect: 'manual' };
+  if (cacheable) {
+    init.cf = {
+      cacheEverything: true,
+      // 出错的响应也缓存的话，一次抽风能让所有人看好几分钟的坏图
+      cacheTtlByStatus: { '200-299': 3600, '400-499': 5, '500-599': 0 },
+    };
+  }
+
+  let res;
+  try {
+    res = await fetch(forwarded, init);
+  } catch (e) {
+    // 说清楚是哪一段断的。不然前端只会报一句"连不上"，
+    // 分不清是用户到我们这里断了，还是我们到 Supabase 断了 —— 这两件事
+    // 的处理方式完全不同
+    return new Response(
+      JSON.stringify({ ok: false, error: '转发到 Supabase 失败：' + ((e && e.message) || e) }),
+      { status: 502, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...sbCorsHeaders(req) } },
+    );
+  }
+
+  const out = new Response(res.body, res);
+  // 跳转的目标还在 supabase.co 上。原样给浏览器，它就自己直连过去了 ——
+  // 绕一圈又回到原来那条不通的路上，反代等于白做
+  const loc = out.headers.get('location');
+  if (loc && loc.startsWith(env.SUPABASE_URL)) {
+    out.headers.set('location', url.origin + '/sb' + loc.slice(env.SUPABASE_URL.length));
+  }
+  for (const [k, v] of Object.entries(sbCorsHeaders(req))) out.headers.set(k, v);
+  return out;
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
@@ -128,6 +220,7 @@ export default {
       if (req.method !== 'POST') return json({ ok: false, error: '只接受 POST' }, 405);
       return handleUpload(req, env);
     }
+    if (url.pathname.startsWith(SB_PREFIX)) return handleSupabase(req, env, url);
     return new Response('Not found', { status: 404 });
   },
 };
