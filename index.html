@@ -1542,10 +1542,31 @@ function bootFail(err){
       <p class="hint" style="margin:0 0 18px;">${net ? '请求发出去没有回来。换个网络再试一次（比如 Wi-Fi 切成流量），多半就好了。' : '数据没能读出来。稍后再试一次，还是这样就把下面这行发给我。'}</p>
       <button class="btn-solid" id="bootRetryBtn">重试</button>
       <p class="hint" style="margin-top:16px; font-size:12px; opacity:.55; word-break:break-all;">${esc(raw || '未知错误')}</p>
+      <p class="hint" id="bootProbe" style="margin-top:6px; font-size:12px; opacity:.55; word-break:break-all;">接口探测中…</p>
     </div>`;
   const btn = document.getElementById('bootRetryBtn');
   if(btn) btn.addEventListener('click', ()=>{ box.innerHTML = BOOT_SPIN_HTML; initAuth(); });
+  bootProbe();
   console.error('开屏失败：', err);
+}
+// 失败的那一刻，这条路到底通不通？这是区分「网络偶尔抖一下」和「整条路断了」
+// 的唯一硬证据 —— 前者刷新就好，后者得换条路走。不带 key 发，通了会回一句
+// 「没有 API key」，那也算通：我们要的只是"能不能走到对面"。
+async function bootProbe(){
+  const el = document.getElementById('bootProbe');
+  if(!el) return;
+  const t0 = Date.now();
+  const ctl = (typeof AbortController === 'function') ? new AbortController() : null;
+  // 不设超时的话，路不通时它会挂在那里转好几十秒，页面上一直是「探测中」
+  const timer = ctl ? setTimeout(()=>ctl.abort(), 8000) : null;
+  try{
+    const r = await fetch(SUPABASE_URL + '/rest/v1/', { method:'GET', cache:'no-store', signal: ctl ? ctl.signal : undefined });
+    el.textContent = `接口探测：HTTP ${r.status} · ${Date.now()-t0}ms · 这一刻是通的`;
+  }catch(e){
+    el.textContent = `接口探测：${String((e && e.message) || e)} · ${Date.now()-t0}ms · 这一刻不通`;
+  }finally{
+    if(timer) clearTimeout(timer);
+  }
 }
 
 async function initAuth(){
