@@ -9851,6 +9851,9 @@ let wishLoaded = false, wishLoading = false, wishError = null;
 let openWishId = null;
 let wishReplies = [];
 const wishDrafts = new Map();   // 详情页因为点想要/标记解决会整块重画，回复草稿得自己存
+// 选好的作品同理，而且它比草稿更坑：文字没了人一眼看得出来，
+// 下拉框悄悄跳回「不带作品」是看不出来的 —— 人以为带上了，发出去的却是空的
+const wishWorkPicks = new Map();
 
 function wishStar(filled){
   return `<svg viewBox="0 0 24 24" fill="${filled?'currentColor':'none'}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.4 5.4 5.6.6-4.2 4 1.2 5.8L12 16l-5 2.8L8.2 13 4 9l5.6-.6z"/></svg>`;
@@ -9988,6 +9991,13 @@ function openWishComposer(){
 }
 
 /* ---- 许愿详情 ---- */
+// 存着的那个选择未必还有效：作品可能在这中间被自己删了。
+// 对不上就当没选 —— 总比在下拉框里留一个点不开的名字、
+// 或者把一个已经不存在的作品 id 发出去强
+function wishPick(wishId, works){
+  const v = wishWorkPicks.get(wishId) || '';
+  return works.some(x => x.k + ':' + x.id === v) ? v : '';
+}
 function myWorksForPick(){
   return [
     ...collections.filter(c=>c.authorId===currentUserId).map(c=>({k:'collection', id:c.id, name:c.title})),
@@ -10098,8 +10108,8 @@ function renderWishDetail(){
       ${works.length ? `
         <div class="field-label">顺便带上我的一件作品（可选）</div>
         <select class="field-input" id="wrWork">
-          <option value="">不带作品</option>
-          ${works.map(x=>`<option value="${esc(x.k+':'+x.id)}">${esc(x.name)}（${x.k==='collection'?'表情包':x.k==='font'?'字体':'其他'}）</option>`).join('')}
+          <option value=""${wishPick(w.id, works) ? '' : ' selected'}>不带作品</option>
+          ${works.map(x=>{ const v = x.k+':'+x.id; return `<option value="${esc(v)}"${wishPick(w.id, works)===v ? ' selected' : ''}>${esc(x.name)}（${x.k==='collection'?'表情包':x.k==='font'?'字体':'其他'}）</option>`; }).join('')}
         </select>
         <p class="field-help">只能带自己发布过的作品。带上之后对方点一下就能直接打开。</p>`
         : `<p class="field-help">等你发布过作品之后，回复时就能顺手把作品带上了。</p>`}
@@ -10141,6 +10151,11 @@ function renderWishDetail(){
     });
   });
   $('wrBody').addEventListener('input', e=>wishDrafts.set(w.id, e.target.value));
+  const wrWork = $('wrWork');
+  if(wrWork) wrWork.addEventListener('change', e=>{
+    if(e.target.value) wishWorkPicks.set(w.id, e.target.value);
+    else wishWorkPicks.delete(w.id);
+  });
   $('wrSubmit').addEventListener('click', sendWishReply);
 }
 async function toggleWishWant(){
@@ -10187,6 +10202,7 @@ async function sendWishReply(){
   if(error){ showToast('发送失败：'+error.message); return; }
   if(data && data.ok === false){ showToast(data.error || '发送失败'); return; }
   wishDrafts.delete(w.id);
+  wishWorkPicks.delete(w.id);
   showToast('已回复');
   await openWishDetail(w.id);
   renderWishList();
