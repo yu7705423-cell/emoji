@@ -2409,6 +2409,18 @@ function openChangePwSheet(){
     }
   });
 }
+// QQ 号：忘了账号的人太多，管理员只能靠昵称一个个翻。让本人自己绑一个，
+// 管理员凭它就能查到账号。
+// 这是自己填的、没有任何验证，所以只能当"线索"用，不能当"证明"用 ——
+// 找回账号可以，凭它重置密码不行。
+// 存在单独的一张表里，只能通过 get_my_qq / set_my_qq 读写本人那一条；
+// 不会出现在主页、作品卡、导出、备份里，也不要往那些地方加。
+const QQ_RE = /^[1-9][0-9]{4,11}$/;
+// 中文输入法下常敲出全角数字，复制来的也常带空格或零宽字符。NFKC 会把全角数字换成半角
+function normQq(s){
+  return String(s == null ? '' : s).normalize('NFKC').replace(/[\s\u200B-\u200D\u2060\uFEFF]/g, '');
+}
+const QQ_ERR = { bad_qq: '格式不对，QQ 号是 5 到 12 位数字', not_authenticated: '登录状态已失效，请重新登录', no_profile: '账号资料不完整' };
 async function saveProfileRemote(nickname, status, avatar){
   const { error } = await sb.from('users').update({ nickname, status_message: status, avatar_url: avatar }).eq('id', currentUserId);
   if(error){ showToast('保存失败：'+error.message); return false; }
@@ -3012,6 +3024,11 @@ function openEditProfileSheet(){
       <input class="field-input" id="profileNameInput" value="${esc(currentUser)}">
       <div class="field-label">状态消息</div>
       <input class="field-input" id="profileStatusInput" value="${esc(statusMessage)}" placeholder="输入状态消息" maxlength="40">
+      <div id="qqSection" style="display:none;">
+        <div class="field-label">QQ 号（选填）</div>
+        <input class="field-input" id="profileQqInput" inputmode="numeric" autocomplete="off" maxlength="16" placeholder="例如 12345678">
+        <p class="field-help">只有你自己和管理员看得到，不会显示在主页或作品上。忘记账号时，管理员能凭它帮你找回。</p>
+      </div>
       <div class="btn-row" style="margin-top:24px;"><button class="btn-outline" id="changePwBtn">修改密码</button></div>
       <div class="btn-row"><button class="btn-outline" id="logoutBtn">退出登录</button></div>
     </div>
@@ -3020,6 +3037,22 @@ function openEditProfileSheet(){
   $('profileSheetMask').classList.add('open');
   $('profileSheetCloseBtn').addEventListener('click', ()=>$('profileSheetMask').classList.remove('open'));
   $('changePwBtn').addEventListener('click', openChangePwSheet);
+
+  // null = 这一块不显示：数据库那边的函数还没建、或者网络没通。
+  // 不显示比显示一个存不了的输入框好，而且这样先上线还是先跑 SQL 都不会出错
+  let qqBase = null;
+  (async ()=>{
+    try{
+      const { data, error } = await sb.rpc('get_my_qq');
+      if(error || !data || !data.ok) return;
+      const inp = $('profileQqInput');
+      if(!inp) return;                         // 等的这会儿，这一屏已经关了
+      qqBase = data.qq || '';
+      if(!inp.dataset.touched) inp.value = qqBase;   // 已经开始敲了就别覆盖
+      $('qqSection').style.display = '';
+    }catch(e){ /* 当作没开通 */ }
+  })();
+  $('profileQqInput').addEventListener('input', e=>{ e.target.dataset.touched = '1'; });
   $('logoutBtn').addEventListener('click', ()=>{
     openConfirmSheet('退出登录', '退出后需要重新用账号密码登录。', '退出', async ()=>{
       await sb.auth.signOut();
@@ -3030,6 +3063,9 @@ function openEditProfileSheet(){
     const name = $('profileNameInput').value.trim();
     if(!name){ showToast('昵称不能为空'); return; }
     const newStatus = $('profileStatusInput').value.trim();
+    // QQ 号格式不对先拦在最前面：不然昵称已经存上了，才告诉你 QQ 号有问题，一次保存存了一半
+    const qqNow = qqBase === null ? null : normQq($('profileQqInput').value);
+    if(qqNow && !QQ_RE.test(qqNow)){ showToast('QQ 号应该是 5 到 12 位数字'); return; }
     $('profileSaveBtn').disabled = true;
     const ok = await saveProfileRemote(name, newStatus, avatarDataUrl);
     $('profileSaveBtn').disabled = false;
@@ -3039,8 +3075,22 @@ function openEditProfileSheet(){
       currentUser = name;
     }
     statusMessage = newStatus;
-    $('profileSheetMask').classList.remove('open');
     renderProfileBits(); renderAll();
+    // QQ 号单独存，而且放在最后：它存不上不能连累昵称和状态
+    if(qqNow !== null && qqNow !== qqBase){
+      $('profileSaveBtn').disabled = true;
+      let res = null, err = null;
+      try{ ({ data: res, error: err } = await sb.rpc('set_my_qq', { p_qq: qqNow })); }
+      catch(e){ err = e; }
+      $('profileSaveBtn').disabled = false;
+      if(err || !res || !res.ok){
+        const why = (res && QQ_ERR[res.error]) || (err && err.message) || '请稍后再试';
+        showToast('昵称和状态已更新，QQ 号没存上：' + why);
+        return;                                // 留在这一屏，让人能改了再存
+      }
+      qqBase = res.qq || '';
+    }
+    $('profileSheetMask').classList.remove('open');
     showToast('资料已更新');
   });
 }
